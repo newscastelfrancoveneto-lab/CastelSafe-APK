@@ -122,9 +122,30 @@ class NotifySettings(context: Context) {
         get() = p.getBoolean("allarmeVolumeMax", true)
         set(v) = p.edit().putBoolean("allarmeVolumeMax", v).apply()
 
-    fun suonaAllarme(c: Classificata): Boolean {
+    var allarmeSuono: SuonoAllarme
+        get() = runCatching { SuonoAllarme.valueOf(p.getString("allarmeSuono", null)!!) }.getOrDefault(SuonoAllarme.SIRENA)
+        set(v) = p.edit().putString("allarmeSuono", v.name).apply()
+
+    /** L'allarme suona solo nella fascia notturna indicata (di giorno arriva la normale notifica). */
+    var allarmeSoloNotte: Boolean
+        get() = p.getBoolean("allarmeSoloNotte", false)
+        set(v) = p.edit().putBoolean("allarmeSoloNotte", v).apply()
+    var allarmeDa: Int    // minuti dalla mezzanotte
+        get() = p.getInt("allarmeDa", 22 * 60)
+        set(v) = p.edit().putInt("allarmeDa", v).apply()
+    var allarmeA: Int
+        get() = p.getInt("allarmeA", 7 * 60)
+        set(v) = p.edit().putInt("allarmeA", v).apply()
+
+    fun suonaAllarme(c: Classificata, now: LocalTime = LocalTime.now()): Boolean {
         val min = allarme(c.categoria)
-        return min != Level.NESSUNO && !c.rientro && c.livello >= min
+        if (min == Level.NESSUNO || c.rientro || c.livello < min) return false
+        return !allarmeSoloNotte || inFascia(now, allarmeDa, allarmeA)
+    }
+
+    private fun inFascia(now: LocalTime, da: Int, a: Int): Boolean {
+        val m = now.hour * 60 + now.minute
+        return if (da <= a) m in da until a else m >= da || m < a
     }
 
     /** Il livello rosso suona sempre (anche se la categoria è silenziosa o durante la notte). */

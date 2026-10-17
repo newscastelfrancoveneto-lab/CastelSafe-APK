@@ -38,7 +38,7 @@ object Alarm {
         .build()
 
     @Synchronized
-    fun start(ctx: Context, seconds: Int = MAX_S) {
+    fun start(ctx: Context, seconds: Int = MAX_S, suono: SuonoAllarme? = null) {
         stopInternal()
         val app = ctx.applicationContext
         lastCtx = app
@@ -47,8 +47,10 @@ object Alarm {
             restoreVolume = am.getStreamVolume(AudioManager.STREAM_ALARM)
             am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0)
         }
-        val uri = listOf(RingtoneManager.TYPE_ALARM, RingtoneManager.TYPE_RINGTONE, RingtoneManager.TYPE_NOTIFICATION)
-            .firstNotNullOfOrNull { RingtoneManager.getDefaultUri(it) }
+        val scelto = suono ?: NotifySettings(app).allarmeSuono
+        val uri = runCatching { Siren.file(app, scelto)?.let { android.net.Uri.fromFile(it) } }.getOrNull()
+            ?: listOf(RingtoneManager.TYPE_ALARM, RingtoneManager.TYPE_RINGTONE, RingtoneManager.TYPE_NOTIFICATION)
+                .firstNotNullOfOrNull { RingtoneManager.getDefaultUri(it) }
         player = uri?.let {
             runCatching {
                 MediaPlayer().apply {

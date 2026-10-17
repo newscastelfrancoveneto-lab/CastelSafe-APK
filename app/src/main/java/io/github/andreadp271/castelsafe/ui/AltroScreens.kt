@@ -258,7 +258,7 @@ fun NotificheScreen(nav: Nav) {
                 val alarmOn by Alarm.active.collectAsState()
                 Panel {
                     Text("Allarme sonoro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Muted("Per le situazioni gravi: suona come una sveglia anche con il telefono in silenzioso o in vibrazione, finché non lo fermi (al massimo un minuto). Scegli tu per cosa.")
+                    Muted("Per le situazioni gravi: suona una sirena anche con il telefono in silenzioso o in vibrazione, finché non lo fermi (al massimo un minuto). Scegli tu per cosa.")
                     listOf(Categoria.ALLERTA, Categoria.SENSORI, Categoria.COMUNICAZIONI).forEach { c ->
                         Text(c.titolo, Modifier.padding(top = 12.dp), fontWeight = FontWeight.Medium)
                         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 4.dp)) {
@@ -268,6 +268,28 @@ fun NotificheScreen(nav: Nav) {
                                     s.allarme(c) == l, { upd { s.setAllarme(c, l) } }, SegmentedButtonDefaults.itemShape(i, opts.size),
                                     enabled = s.enabled(c), icon = { if (l != Level.NESSUNO) LevelDot(l, 10.dp) },
                                 ) { Text(label, maxLines = 1) }
+                            }
+                        }
+                    }
+                    Text("Quando", Modifier.padding(top = 12.dp), fontWeight = FontWeight.Medium)
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                        SegmentedButton(!s.allarmeSoloNotte, { upd { s.allarmeSoloNotte = false } }, SegmentedButtonDefaults.itemShape(0, 2)) { Text("Sempre") }
+                        SegmentedButton(s.allarmeSoloNotte, { upd { s.allarmeSoloNotte = true } }, SegmentedButtonDefaults.itemShape(1, 2)) { Text("Solo di notte") }
+                    }
+                    if (s.allarmeSoloNotte) {
+                        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { pickTime(ctx, s.allarmeDa) { upd { s.allarmeDa = it } } }) { Text("Dalle ${hm(s.allarmeDa)}") }
+                            OutlinedButton(onClick = { pickTime(ctx, s.allarmeA) { upd { s.allarmeA = it } } }) { Text("Alle ${hm(s.allarmeA)}") }
+                        }
+                        Muted("Fuori da questa fascia arriva la normale notifica.")
+                    }
+                    Text("Suono", Modifier.padding(top = 12.dp), fontWeight = FontWeight.Medium)
+                    io.github.andreadp271.castelsafe.data.SuonoAllarme.entries.forEach { suono ->
+                        Row(Modifier.fillMaxWidth().clickable { upd { s.allarmeSuono = suono } }, verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(s.allarmeSuono == suono, { upd { s.allarmeSuono = suono } })
+                            Column(Modifier.weight(1f)) {
+                                Text(suono.label, style = MaterialTheme.typography.bodyMedium)
+                                Muted(suono.descrizione)
                             }
                         }
                     }

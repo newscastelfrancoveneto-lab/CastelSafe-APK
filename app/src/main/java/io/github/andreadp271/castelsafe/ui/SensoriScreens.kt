@@ -243,6 +243,24 @@ private fun nextHalfHour(now: LocalDateTime): LocalDateTime {
     return if (now.minute < 30) base.withMinute(30) else base.withMinute(0).plusHours(1)
 }
 
+/** Ultimo :00 o :30 già passato. */
+private fun lastHalfHour(now: LocalDateTime): LocalDateTime =
+    now.withSecond(0).withNano(0).withMinute(if (now.minute < 30) 0 else 30)
+
+/**
+ * Il dato della mezz'ora in corso è già arrivato? Sì se l'ultimo istante cade dopo l'ultimo
+ * :00/:30 (arrotondato per eccesso: il dato delle 18:20 esce con l'invio delle 18:30) oppure
+ * se l'app ha visto arrivare un dato nuovo dopo quel momento. Dipende solo dai dati, così
+ * uscendo e rientrando nella schermata il countdown non riparte da capo.
+ */
+private fun datoArrivato(id: String, latest: LocalDateTime?, now: LocalDateTime): Boolean {
+    if (latest == null) return true
+    val slot = lastHalfHour(now)
+    val uscita = if (latest.minute % 30 == 0 && latest.second == 0) latest else nextHalfHour(latest)
+    val visto = Repo.nuovoDatoVistoAlle[id]
+    return !uscita.isBefore(slot) || (visto != null && !visto.isBefore(slot))
+}
+
 @Composable
 fun StazioneScreen(nav: Nav, id: String) {
     val st = Stations.byId(id) ?: return run { Column { Bar("Stazione non trovata", onBack = nav::back) } }
@@ -268,24 +286,22 @@ fun StazioneScreen(nav: Nav, id: String) {
     val latest = all.mapNotNull { it.ultimo?.istante }.maxOrNull()
     val latestState by rememberUpdatedState(latest)
     var now by remember { mutableStateOf(LocalDateTime.now()) }
-    var next by remember { mutableStateOf(nextHalfHour(LocalDateTime.now())) }
-    var waitingFrom by remember { mutableStateOf<LocalDateTime?>(null) }
+    val waiting = res.data != null && !datoArrivato(st.id, latest, now)
     LaunchedEffect(st.id) {
         var lastPoll = 0L
         while (true) {
             delay(1000)
             now = LocalDateTime.now()
-            if (waitingFrom == null && !now.isBefore(next)) { waitingFrom = latestState ?: LocalDateTime.MIN; lastPoll = 0 }
-            val baseline = waitingFrom
-            if (baseline != null) {
-                val l = latestState
-                if (l != null && l.isAfter(baseline)) { waitingFrom = null; next = nextHalfHour(now) }
-                else if (System.currentTimeMillis() - lastPoll > 60_000) { lastPoll = System.currentTimeMillis(); launch { Repo.loadStazione(st.id, true) } }
+            // in attesa: si richiede il dato ad ARPAV (via server) una volta al minuto
+            if (!datoArrivato(st.id, latestState, now) && System.currentTimeMillis() - lastPoll > 60_000) {
+                lastPoll = System.currentTimeMillis()
+                launch { Repo.loadStazione(st.id, true) }
             }
         }
     }
-    val countdown = if (waitingFrom != null) "In attesa di ARPAV" else {
-        val s = java.time.Duration.between(now, next).seconds.coerceAtLeast(0)
+    val waitingFrom = if (waiting) now else null
+    val countdown = if (waiting) "In attesa di ARPAV" else {
+        val s = java.time.Duration.between(now, nextHalfHour(now)).seconds.coerceAtLeast(0)
         "%02d:%02d".format(s / 60, s % 60)
     }
 

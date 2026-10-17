@@ -114,9 +114,17 @@ object Repo {
     suspend fun loadMeteo(force: Boolean = false) =
         load("meteo", meteo, 30, force, Api::meteoRaw) { Api.parseMeteo(it) }
 
+    /** Ora in cui l'app ha visto arrivare un dato ARPAV più recente, per stazione (serve al countdown). */
+    val nuovoDatoVistoAlle = java.util.concurrent.ConcurrentHashMap<String, LocalDateTime>()
+
+    private fun ultimoIstante(r: Res<List<Serie>>) = r.data?.mapNotNull { it.ultimo?.istante }?.maxOrNull()
+
     suspend fun loadStazione(id: String, force: Boolean = false) {
         val flow = synchronized(stazioni) { stazioni.getOrPut(id) { MutableStateFlow(Res()) } }
+        val prima = ultimoIstante(flow.value)
         load("stazione_$id", flow, 10, force, { Api.stationXml(id) }, Api::parseStation)
+        val dopo = ultimoIstante(flow.value)
+        if (prima != null && dopo != null && dopo.isAfter(prima)) nuovoDatoVistoAlle[id] = LocalDateTime.now()
     }
 
     /** Dati OSM: cambiano raramente, si aggiornano al massimo una volta al giorno. */
