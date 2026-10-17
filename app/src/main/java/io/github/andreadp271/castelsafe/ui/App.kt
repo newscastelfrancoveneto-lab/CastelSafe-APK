@@ -100,6 +100,7 @@ fun App(pendingRoute: String?, onRouteHandled: () -> Unit) {
 
     LaunchedEffect(pendingRoute) {
         val r = pendingRoute ?: return@LaunchedEffect
+        current = tabOf(r)
         when {
             r.startsWith("stazione/") -> { nav.tab("sensori"); nav.go(r) }
             r in topLevel -> nav.tab(r)
