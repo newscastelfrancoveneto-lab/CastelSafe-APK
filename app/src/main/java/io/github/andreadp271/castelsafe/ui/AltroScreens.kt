@@ -63,6 +63,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import io.github.andreadp271.castelsafe.BuildConfig
 import io.github.andreadp271.castelsafe.R
+import io.github.andreadp271.castelsafe.data.Alarm
 import io.github.andreadp271.castelsafe.data.Categoria
 import io.github.andreadp271.castelsafe.data.Config
 import io.github.andreadp271.castelsafe.data.Contact
@@ -208,8 +209,14 @@ fun NotificheScreen(nav: Nav) {
                                     }
                                     CheckRow(s.sensoriRientri, "Avvisami anche quando il valore rientra") { upd { s.sensoriRientri = it } }
                                     Text("Stazioni", Modifier.padding(top = 8.dp), fontWeight = FontWeight.Medium)
+                                    Muted("Per ogni stazione puoi scegliere quali dati notificare.")
                                     Stations.all.filter { it.monitored }.forEach { st ->
                                         CheckRow(s.stazione(st.id), "${st.name} (${st.subtitle})") { upd { s.setStazione(st.id, it) } }
+                                        if (s.stazione(st.id)) Column(Modifier.padding(start = 32.dp)) {
+                                            Stations.sensoriNotificati(st.id).forEach { t ->
+                                                CheckRow(s.sensore(st.id, t), Stations.label(t)) { upd { s.setSensore(st.id, t, it) } }
+                                            }
+                                        }
                                     }
                                 }
                                 else -> {}
@@ -243,6 +250,32 @@ fun NotificheScreen(nav: Nav) {
                     if (s.quiete) Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { pickTime(ctx, s.quieteDa) { upd { s.quieteDa = it } } }) { Text("Dalle ${hm(s.quieteDa)}") }
                         OutlinedButton(onClick = { pickTime(ctx, s.quieteA) { upd { s.quieteA = it } } }) { Text("Alle ${hm(s.quieteA)}") }
+                    }
+                }
+            }
+            item {
+                v
+                val alarmOn by Alarm.active.collectAsState()
+                Panel {
+                    Text("Allarme sonoro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Muted("Per le situazioni gravi: suona come una sveglia anche con il telefono in silenzioso o in vibrazione, finché non lo fermi (al massimo un minuto). Scegli tu per cosa.")
+                    listOf(Categoria.ALLERTA, Categoria.SENSORI, Categoria.COMUNICAZIONI).forEach { c ->
+                        Text(c.titolo, Modifier.padding(top = 12.dp), fontWeight = FontWeight.Medium)
+                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                            val opts = listOf(Level.NESSUNO to "Mai", Level.ARANCIONE to "Arancione+", Level.ROSSO to "Solo rosso")
+                            opts.forEachIndexed { i, (l, label) ->
+                                SegmentedButton(
+                                    s.allarme(c) == l, { upd { s.setAllarme(c, l) } }, SegmentedButtonDefaults.itemShape(i, opts.size),
+                                    enabled = s.enabled(c), icon = { if (l != Level.NESSUNO) LevelDot(l, 10.dp) },
+                                ) { Text(label, maxLines = 1) }
+                            }
+                        }
+                    }
+                    CheckRow(s.allarmeVolumeMax, "Alza al massimo il volume della sveglia mentre suona") { upd { s.allarmeVolumeMax = it } }
+                    Muted("Con «Non disturbare» attivo suona solo se in Android le sveglie sono consentite (di solito lo sono).")
+                    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
+                        if (alarmOn) Button(onClick = { Alarm.stop(ctx) }) { Text("Ferma") }
+                        else TextButton(onClick = { Alarm.start(ctx, 5) }) { Text("Prova (5 secondi)") }
                     }
                 }
             }

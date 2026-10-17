@@ -106,6 +106,27 @@ class NotifySettings(context: Context) {
     fun stazione(id: String) = p.getBoolean("staz_$id", true)
     fun setStazione(id: String, v: Boolean) = p.edit().putBoolean("staz_$id", v).apply()
 
+    /** Singolo dato di una stazione (es. solo il livello del Muson, non la pioggia). */
+    fun sensore(stazione: String, tipo: String) = p.getBoolean("sens_${stazione.padStart(4, '0')}_$tipo", true)
+    fun setSensore(stazione: String, tipo: String, v: Boolean) = p.edit().putBoolean("sens_${stazione.padStart(4, '0')}_$tipo", v).apply()
+
+    /**
+     * Allarme sonoro (ignora silenzioso e vibrazione) dal livello indicato in su;
+     * [Level.NESSUNO] = mai. Disattivato finché l'utente non lo sceglie.
+     */
+    fun allarme(c: Categoria): Level = runCatching { Level.valueOf(p.getString("allarme_${c.key}", null)!!) }.getOrDefault(Level.NESSUNO)
+    fun setAllarme(c: Categoria, v: Level) = p.edit().putString("allarme_${c.key}", v.name).apply()
+
+    /** Durante l'allarme alza al massimo il volume della sveglia (poi lo rimette com'era). */
+    var allarmeVolumeMax: Boolean
+        get() = p.getBoolean("allarmeVolumeMax", true)
+        set(v) = p.edit().putBoolean("allarmeVolumeMax", v).apply()
+
+    fun suonaAllarme(c: Classificata): Boolean {
+        val min = allarme(c.categoria)
+        return min != Level.NESSUNO && !c.rientro && c.livello >= min
+    }
+
     /** Il livello rosso suona sempre (anche se la categoria è silenziosa o durante la notte). */
     var rossoSempre: Boolean
         get() = p.getBoolean("rossoSempre", true)
@@ -135,6 +156,7 @@ class NotifySettings(context: Context) {
             Categoria.ALLERTA -> c.livello >= allertaMin || (c.rientro && allertaMin == Level.VERDE)
             Categoria.SENSORI -> {
                 if (c.stazione != null && !stazione(c.stazione)) false
+                else if (c.stazione != null && c.sensore != null && !sensore(c.stazione, c.sensore)) false
                 else if (c.rientro) sensoriRientri
                 else c.livello >= sensoriMin
             }
@@ -254,14 +276,24 @@ object Notifier {
             return
         }
         if (res.ultimoId < s.lastId) s.lastId = res.ultimoId  // registro del server azzerato
+        var allarme = false
         val ricevute = res.notifiche.sortedBy { it.id }.map { item ->
             val c = Classifier.classify(item)
             val show = s.accetta(c) && now - item.ts < MAX_AGE_S
-            if (show) show(ctx, item, c, s)
+            if (show) {
+                val suona = s.suonaAllarme(c)
+                show(ctx, item, c, s, suona)
+                allarme = allarme || suona
+            }
             Ricevuta(item, show)
         }
         History.add(ctx, ricevute)
         if (res.notifiche.isNotEmpty()) s.lastId = maxOf(s.lastId, res.notifiche.maxOf { it.id })
+        if (allarme) {
+            // suona finché l'utente non lo ferma; il controllo resta attivo per non interromperlo
+            Alarm.start(ctx)
+            Alarm.awaitEnd()
+        }
     }
 
     fun routeFor(item: FeedItem): String {
@@ -274,7 +306,7 @@ object Notifier {
         }
     }
 
-    fun show(ctx: Context, item: FeedItem, c: Classificata, s: NotifySettings = NotifySettings(ctx)) {
+    fun show(ctx: Context, item: FeedItem, c: Classificata, s: NotifySettings = NotifySettings(ctx), allarme: Boolean = false) {
         if (!canNotify(ctx)) return
         val rosso = c.livello == Level.ROSSO && !c.rientro
         val channel = when {
@@ -304,6 +336,13 @@ object Notifier {
             .setContentIntent(pi)
             .setCategory(if (c.categoria == Categoria.ALLERTA || rosso) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(if (channel.endsWith("_silenziosa")) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_HIGH)
+            .apply {
+                if (allarme) {
+                    val stop = PendingIntent.getBroadcast(ctx, 1, Intent(ctx, AlarmStopReceiver::class.java), PendingIntent.FLAG_IMMUTABLE)
+                    addAction(0, "Ferma allarme", stop)
+                    setDeleteIntent(stop)
+                }
+            }
             .build()
         // stesso tag = stessa notifica: l'aggiornamento di un sensore sostituisce quella precedente
         runCatching { NotificationManagerCompat.from(ctx).notify(item.tag, 0, n) }

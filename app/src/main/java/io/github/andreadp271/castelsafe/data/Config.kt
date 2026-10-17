@@ -103,6 +103,9 @@ object Stations {
 
     fun soglie(stationId: String, type: String): Soglie? = rules[stationId]?.get(type)
 
+    /** Sensori della stazione per cui il server manda notifiche di soglia. */
+    fun sensoriNotificati(stationId: String): List<String> = rules[stationId]?.keys?.toList().orEmpty()
+
     fun level(stationId: String, type: String, value: Double?): Level {
         val s = soglie(stationId, type) ?: return Level.NESSUNO
         if (value == null) return Level.NESSUNO

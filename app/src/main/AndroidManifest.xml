@@ -38,5 +38,8 @@
         <receiver
             android:name=".data.UpdateReceiver"
             android:exported="false" />
+        <receiver
+            android:name=".data.AlarmStopReceiver"
+            android:exported="false" />
     </application>
 </manifest>

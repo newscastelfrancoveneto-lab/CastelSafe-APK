@@ -4,7 +4,25 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
+import io.github.andreadp271.castelsafe.data.Serie
+import io.github.andreadp271.castelsafe.data.Station
+import io.github.andreadp271.castelsafe.data.StatoStazione
+import io.github.andreadp271.castelsafe.data.Trend
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -72,7 +90,11 @@ fun HomeScreen(nav: Nav) {
     val meteo by Repo.meteo.collectAsState()
     var refreshing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { Repo.refreshHome(false) }
+    LaunchedEffect(Unit) {
+        // storico delle stazioni: serve a riconoscere i dati in rapida salita
+        Stations.all.filter { it.monitored }.forEach { st -> launch { Repo.loadStazione(st.id) } }
+        Repo.refreshHome(false)
+    }
 
     // permesso notifiche (Android 13+): chiesto una volta, poi gestibile da Altro > Notifiche
     var askNotif by remember { mutableStateOf(!Notifier.canNotify(ctx)) }
@@ -84,7 +106,14 @@ fun HomeScreen(nav: Nav) {
         })
         PullToRefreshBox(
             isRefreshing = refreshing,
-            onRefresh = { scope.launch { refreshing = true; Repo.refreshHome(true); refreshing = false } },
+            onRefresh = {
+                scope.launch {
+                    refreshing = true
+                    Stations.all.filter { it.monitored }.forEach { st -> launch { Repo.loadStazione(st.id, true) } }
+                    Repo.refreshHome(true)
+                    refreshing = false
+                }
+            },
             modifier = Modifier.fillMaxSize(),
         ) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -114,19 +143,8 @@ fun HomeScreen(nav: Nav) {
                     Panel(padding = 0.dp) {
                         Stations.all.filter { it.monitored }.forEachIndexed { i, st ->
                             if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            val stato = monitor.data?.get(st.id)
-                            val l = stato?.sensori?.get(st.main)
-                            val level = Stations.level(st.id, st.main, l?.valore)
-                            MenuRow(
-                                title = st.name,
-                                subtitle = "${Stations.label(st.main)} · ${if (stato?.stale == true) "dato non aggiornato" else "ore ${l?.istante ?: "—"}"}",
-                                trailing = {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text(fmtValue(l?.valore, l?.unita.orEmpty()), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
-                                        if (level != Level.NESSUNO) LevelDot(level)
-                                    }
-                                },
-                            ) { nav.tab("sensori"); nav.go("stazione/${st.id}") }
+                            val serie by Repo.stazione(st.id).collectAsState()
+                            SensoreHomeRow(st, monitor.data?.get(st.id), serie.data) { nav.tab("sensori"); nav.go("stazione/${st.id}") }
                         }
                     }
                 }
@@ -140,8 +158,17 @@ fun HomeScreen(nav: Nav) {
                                 WeatherIcon(meteoCategory(s.cielo, s.precipitazioni).nightAware(), 52.dp, s.probInt())
                                 Hspace(14.dp)
                                 Column(Modifier.weight(1f)) {
-                                    Text(s.cielo.ifBlank { "Previsioni" }, fontWeight = FontWeight.SemiBold)
-                                    Muted(listOf(s.etichetta, s.temperatura, s.probabilita.takeIf { it.isNotBlank() }?.let { "pioggia $it" }).filterNotNull().filter { it.isNotBlank() }.joinToString(" · "))
+                                    Text(s.etichetta.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(s.cielo.ifBlank { "Previsioni" }, fontWeight = FontWeight.SemiBold, maxLines = 2)
+                                }
+                                Hspace(8.dp)
+                                Column(horizontalAlignment = Alignment.End) {
+                                    tempOf(s)?.let { (tipo, v) ->
+                                        Text(v, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = if (tipo == "max") Color(0xFFEA580C) else Color(0xFF3B82F6))
+                                    }
+                                    s.probInt()?.let { p ->
+                                        Text("💧 $p%", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = if (p >= 40) Color(0xFF3B82F6) else MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 }
                             }
                         }
@@ -390,4 +417,69 @@ fun ZoomImage(res: Int, onClose: () -> Unit) {
             }
         }
     }
+}
+
+/**
+ * Riga di una stazione nella Home: i suoi dati scorrono a carosello. Se uno o più dati
+ * superano una soglia o salgono in fretta, il carosello si ferma su quello (o gira solo tra quelli).
+ */
+@Composable
+private fun SensoreHomeRow(st: Station, stato: StatoStazione?, serie: List<Serie>?, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val letture = stato?.sensori.orEmpty().filter { (t, l) -> t != "PRECCUM24_DRY" && t != "DVENTO" && l.valore != null }
+    val tipi = letture.keys.sortedBy { if (it == st.main) 0 else 1 }
+    val rapide = remember(serie) { serie?.let { Trend.rapide(it) }.orEmpty() }
+    val evidenza = tipi.filter { it in rapide || Stations.level(st.id, it, letture[it]?.valore) >= Level.GIALLO }
+    val giro = evidenza.ifEmpty { tipi }
+    var i by remember(giro) { mutableIntStateOf(0) }
+    LaunchedEffect(giro) {
+        if (giro.size > 1) while (true) { delay(3500); i = (i + 1) % giro.size }
+    }
+    val tipo = giro.getOrNull(i) ?: st.main
+
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(st.name, style = MaterialTheme.typography.bodyLarge)
+                if (giro.size > 1) {
+                    Hspace(8.dp)
+                    giro.forEachIndexed { k, _ ->
+                        Box(Modifier.padding(horizontal = 1.5.dp).size(5.dp).clip(CircleShape).background(if (k == i) cs.primary else cs.outlineVariant))
+                    }
+                }
+            }
+            AnimatedContent(tipo, transitionSpec = carosello, label = "sottotitolo") { t ->
+                val l = letture[t]
+                val salita = rapide[t]
+                Column {
+                    Text(
+                        "${Stations.label(t)} · ${if (stato?.stale == true) "dato non aggiornato" else "ore ${l?.istante ?: "—"}"}",
+                        style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                    )
+                    if (salita != null) Text(
+                        if (t == "PREC") "▲ Pioggia intensa: ${fmtValue(salita.delta, salita.unita)} nell'ultima ora"
+                        else "▲ In rapida salita: +${fmtValue(salita.delta, salita.unita)} in un'ora",
+                        style = MaterialTheme.typography.bodySmall, color = cs.error, fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+        Hspace(8.dp)
+        AnimatedContent(tipo, transitionSpec = carosello, label = "valore") { t ->
+            val l = letture[t]
+            val level = Stations.level(st.id, t, l?.valore)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (t in rapide) Text("▲", color = cs.error, fontWeight = FontWeight.Bold)
+                Text(fmtValue(l?.valore, l?.unita.orEmpty()), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
+                if (level != Level.NESSUNO) LevelDot(level)
+            }
+        }
+    }
+}
+
+private val carosello: AnimatedContentTransitionScope<String>.() -> ContentTransform = {
+    (slideInVertically { it / 2 } + fadeIn()) togetherWith (slideOutVertically { -it / 2 } + fadeOut())
 }

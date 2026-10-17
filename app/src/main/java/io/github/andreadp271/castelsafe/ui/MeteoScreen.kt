@@ -82,7 +82,7 @@ private val mesiNomi = listOf("gennaio", "febbraio", "marzo", "aprile", "maggio"
 private val tempRe = Regex("""(min|max)\s+(-?\d+)(?:/(-?\d+))?""", RegexOption.IGNORE_CASE)
 
 /** "max 21/23 C" → ("max", "21–23°"). */
-private fun tempOf(s: Scadenza): Pair<String, String>? = tempRe.find(s.temperatura)?.destructured?.let { (tipo, lo, hi) ->
+internal fun tempOf(s: Scadenza): Pair<String, String>? = tempRe.find(s.temperatura)?.destructured?.let { (tipo, lo, hi) ->
     tipo.lowercase() to "$lo${if (hi.isNotBlank() && hi != lo) "–$hi" else ""}°"
 }
 

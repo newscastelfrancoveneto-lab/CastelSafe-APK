@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        io.github.andreadp271.castelsafe.data.Alarm.stop(this) // aperta dalla notifica: l'allarme ha fatto il suo lavoro
         // all'apertura: notifiche arrivate nel frattempo e statistiche anonime (max una ogni 30 minuti, come la PWA)
         Notifier.checkNow(this)
         val p = getSharedPreferences("app", Context.MODE_PRIVATE)
