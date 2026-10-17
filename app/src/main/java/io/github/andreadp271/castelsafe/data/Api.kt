@@ -2,7 +2,12 @@ package io.github.andreadp271.castelsafe.data
 
 import android.util.Xml
 import io.github.andreadp271.castelsafe.BuildConfig
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -92,30 +97,50 @@ object Api {
         }
     }
 
+    /** Mirror Overpass pubblici, gli stessi della PWA (overpass.osm.ch escluso: risponde subito ma vuoto). */
     private val overpassMirrors = listOf(
-        "https://overpass-api.de/api/interpreter",
         "https://overpass.private.coffee/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.monicz.dev/api/interpreter",
+        "https://overpass.openstreetmap.fr/api/interpreter",
         "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+        "https://overpass-api.de/api/interpreter",
+        "https://lz4.overpass-api.de/api/interpreter",
     )
 
-    /** Query Overpass: prima dal proxy del server (come la PWA), poi direttamente dai mirror pubblici. */
-    suspend fun overpass(query: String): String = withContext(Dispatchers.IO) {
+    private val emptyElements = Regex(""""elements"\s*:\s*\[\s*]""")
+
+    /**
+     * Query Overpass "multicanale" come la PWA: la stessa richiesta parte in parallelo verso tutti
+     * i mirror e il proxy del server, vince la prima risposta valida e le altre vengono annullate.
+     * Una risposta senza elementi vale solo se nessun altro canale ne dà una piena.
+     */
+    suspend fun overpass(query: String): String = coroutineScope {
+        val endpoints = listOf(url("/api/overpass")) + overpassMirrors
+        val winner = CompletableDeferred<String>()
+        var empty: String? = null
         var last: Exception? = null
-        for (endpoint in listOf(url("/api/overpass")) + overpassMirrors) {
-            try {
-                val body = FormBody.Builder().add("data", query).build()
-                overpassClient.newCall(Request.Builder().url(endpoint).post(body).build()).execute().use { r ->
-                    if (!r.isSuccessful) throw IOException("OpenStreetMap: HTTP ${r.code}")
-                    val text = r.body!!.string()
+        val jobs = endpoints.map { endpoint ->
+            launch(Dispatchers.IO) {
+                try {
+                    val body = FormBody.Builder().add("data", query).build()
+                    val call = overpassClient.newCall(Request.Builder().url(endpoint).post(body).build())
+                    val text = kotlinx.coroutines.runInterruptible { call.execute() }.use { r ->
+                        if (!r.isSuccessful) throw IOException("OpenStreetMap: HTTP ${r.code}")
+                        r.body!!.string()
+                    }
                     if (!text.trimStart().startsWith("{")) throw IOException("OpenStreetMap: risposta non valida")
-                    return@withContext text
+                    if (emptyElements.containsMatchIn(text)) empty = text
+                    else winner.complete(text)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    last = e
                 }
-            } catch (e: Exception) {
-                last = e
             }
         }
-        throw last ?: IOException("OpenStreetMap non raggiungibile")
+        launch { jobs.joinAll(); winner.complete(empty ?: throw (last ?: IOException("OpenStreetMap non raggiungibile"))) }
+        try { winner.await() } finally { coroutineContext.cancelChildren() }
     }
 
     // ── Parsing chiusure (GeoJSON) ───────────────────────────────────────────

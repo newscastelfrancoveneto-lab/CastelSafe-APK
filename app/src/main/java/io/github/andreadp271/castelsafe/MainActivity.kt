@@ -97,4 +97,10 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onDestroy() {
+        // la mappa è conservata tra le schede: va rilasciata con l'Activity che la ospita
+        if (isFinishing || !isChangingConfigurations) io.github.andreadp271.castelsafe.ui.MapFocus.release()
+        super.onDestroy()
+    }
 }

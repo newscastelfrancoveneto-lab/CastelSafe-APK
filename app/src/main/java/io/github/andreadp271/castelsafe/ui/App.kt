@@ -1,5 +1,8 @@
 package io.github.andreadp271.castelsafe.ui
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -131,7 +134,12 @@ fun App(pendingRoute: String?, onRouteHandled: () -> Unit) {
             }
         },
     ) { inner ->
-        NavHost(controller, startDestination = start,modifier = Modifier.fillMaxSize().padding(inner).consumeWindowInsets(inner)) {
+        NavHost(
+            controller, startDestination = start, modifier = Modifier.fillMaxSize().padding(inner).consumeWindowInsets(inner),
+            // dissolvenza breve: quella predefinita (700 ms) rende lenti i cambi di schermata
+            enterTransition = { fadeIn(tween(150)) }, exitTransition = { fadeOut(tween(100)) },
+            popEnterTransition = { fadeIn(tween(150)) }, popExitTransition = { fadeOut(tween(100)) },
+        ) {
             composable("home") { HomeScreen(nav) }
             composable("allerta") { AllertaScreen(nav) }
             composable("guida") { GuidaScreen(nav) }

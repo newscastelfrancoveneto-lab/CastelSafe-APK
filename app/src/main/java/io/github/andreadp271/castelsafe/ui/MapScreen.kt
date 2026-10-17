@@ -97,13 +97,25 @@ object MapFocus {
     data class Target(val lat: Double, val lon: Double)
     val target = MutableStateFlow<Target?>(null)
     var lastCenter: GeoPoint? = null
-    var lastZoom: Double = 13.5
+    var lastZoom: Double = 14.0
     val layers = MutableStateFlow(Layer.entries.toSet())
     /** Radar precipitazioni attivo (si accende anche dal meteo). */
     val radar = MutableStateFlow(false)
     /** L'impostazione "Radar all'apertura" si applica una volta per sessione. */
     var radarDefaultApplied = false
+
+    /** MapView conservata tra un'apertura e l'altra della scheda: tornare alla mappa è immediato. */
+    internal var view: MapView? = null
+    internal var viewOwner: Context? = null
+    /** Dati con cui sono stati disegnati i livelli: se non cambiano non si ridisegna nulla. */
+    internal var builtFrom: List<Any?>? = null
+
+    fun release() { view?.onDetach(); view = null; viewOwner = null; builtFrom = null; myLocationOverlay = null }
 }
+
+private val popupState = MutableStateFlow<Popup?>(null)
+private var myLocationOverlay: MyLocationNewOverlay? = null
+private val radarOverlay = RadarOverlay()
 
 /** Livelli del menu, nelle stesse sezioni della PWA. */
 enum class Layer(val section: String, val label: String, val swatch: Color, val area: Boolean = false) {
@@ -141,9 +153,8 @@ fun MapScreen(nav: Nav) {
     val layers by MapFocus.layers.collectAsState()
     val target by MapFocus.target.collectAsState()
     val radarOn by MapFocus.radar.collectAsState()
-    var popup by remember { mutableStateOf<Popup?>(null) }
+    val popup by popupState.collectAsState()
     var menuOpen by remember { mutableStateOf(false) }
-    var myLocation by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
     val density = ctx.resources.displayMetrics.density
 
     LaunchedEffect(Unit) {
@@ -155,18 +166,21 @@ fun MapScreen(nav: Nav) {
         launch { Repo.loadConfine() }; launch { Repo.loadMeteo() }
     }
 
-    val radarOverlay = remember { RadarOverlay() }
     val map = remember {
-        MapView(ctx).apply {
+        MapFocus.view?.takeIf { MapFocus.viewOwner === ctx } ?: MapView(ctx).apply {
             setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
             zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
             isTilesScaledToDpi = true
             minZoomLevel = 6.0 // come la PWA: ci si può allontanare per vedere il radar su tutta Italia
             maxZoomLevel = 19.0
+            // come lo zoomSnap di Leaflet: dopo il pizzico lo zoom si ferma su un livello intero,
+            // così le tessere sono mostrate alla loro risoluzione e non ingrandite (sgranate)
+            setZoomRounding(true)
+            setDestroyMode(false) // non distruggerla quando esce dallo schermo: viene riusata
             controller.setZoom(MapFocus.lastZoom)
             controller.setCenter(MapFocus.lastCenter ?: GeoPoint(Config.CENTER_LAT, Config.CENTER_LON))
-        }
+        }.also { MapFocus.view = it; MapFocus.viewOwner = ctx; MapFocus.builtFrom = null }
     }
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -180,25 +194,28 @@ fun MapScreen(nav: Nav) {
         }
         lifecycle.addObserver(obs)
         map.onResume()
+        myLocationOverlay?.enableMyLocation()
         onDispose {
             MapFocus.lastCenter = GeoPoint(map.mapCenter.latitude, map.mapCenter.longitude)
             MapFocus.lastZoom = map.zoomLevelDouble
-            myLocation?.disableMyLocation()
+            myLocationOverlay?.disableMyLocation()
             lifecycle.removeObserver(obs)
-            map.onPause()
-            map.onDetach()
+            map.onPause() // la vista resta in memoria per il prossimo ritorno alla scheda
         }
     }
 
     LaunchedEffect(target) {
         target?.let {
-            map.controller.animateTo(GeoPoint(it.lat, it.lon), 16.5, 600L)
+            map.controller.animateTo(GeoPoint(it.lat, it.lon), 17.0, 600L)
             MapFocus.target.value = null
         }
     }
 
     // Livelli: ricostruiti quando cambiano dati o filtri (ordine di disegno come la PWA)
     LaunchedEffect(aree.data, chiusure.data, corsi.data, confine.data, layers, radarOn) {
+        val key = listOf(aree.data, chiusure.data, corsi.data, confine.data, layers, radarOn)
+        if (MapFocus.builtFrom == key) return@LaunchedEffect
+        MapFocus.builtFrom = key
         val keep = map.overlays.filterIsInstance<MyLocationNewOverlay>()
         map.overlays.clear()
         confine.data?.forEach { ring ->
@@ -217,7 +234,7 @@ fun MapScreen(nav: Nav) {
                 setPoints(c.linea.map { GeoPoint(it.first, it.second) })
                 outlinePaint.color = color; outlinePaint.alpha = 205; outlinePaint.strokeWidth = w * density
                 outlinePaint.strokeCap = Paint.Cap.ROUND
-                setOnClickListener { _, _, _ -> popup = Popup.Corso(c.nome ?: waterwayLabel[c.tipo] ?: "Corso d'acqua"); true }
+                setOnClickListener { _, _, _ -> popupState.value = Popup.Corso(c.nome ?: waterwayLabel[c.tipo] ?: "Corso d'acqua"); true }
             }
         }
         aree.data?.forEach { a ->
@@ -232,7 +249,7 @@ fun MapScreen(nav: Nav) {
                 points = a.forma.map { GeoPoint(it.first, it.second) }
                 outlinePaint.color = stroke; outlinePaint.strokeWidth = 2.5f * density
                 fillPaint.color = fill
-                setOnClickListener { _, _, _ -> popup = Popup.Area(a); true }
+                setOnClickListener { _, _, _ -> popupState.value = Popup.Area(a); true }
             }
         }
         if (Layer.AVVISI in layers) chiusure.data?.filter { it.stato() != Chiusura.Stato.CONCLUSO }?.forEach { c ->
@@ -245,19 +262,19 @@ fun MapScreen(nav: Nav) {
                 map.overlays += if (closed) Polygon(map).apply {
                     points = f.map { GeoPoint(it.first, it.second) }
                     outlinePaint.color = stroke; outlinePaint.strokeWidth = width * density; fillPaint.color = fill
-                    setOnClickListener { _, _, _ -> popup = Popup.Avviso(c); true }
+                    setOnClickListener { _, _, _ -> popupState.value = Popup.Avviso(c); true }
                 } else Polyline(map).apply {
                     setPoints(f.map { GeoPoint(it.first, it.second) })
                     outlinePaint.color = stroke; outlinePaint.strokeWidth = width * density
-                    setOnClickListener { _, _, _ -> popup = Popup.Avviso(c); true }
+                    setOnClickListener { _, _, _ -> popupState.value = Popup.Avviso(c); true }
                 }
             }
-            c.punti.forEach { p -> map.overlays += marker(map, p.first, p.second, circleIcon(ctx, 16, stroke, fill or 0x59000000)) { popup = Popup.Avviso(c) } }
+            c.punti.forEach { p -> map.overlays += marker(map, p.first, p.second, circleIcon(ctx, 16, stroke, fill or 0x59000000)) { popupState.value = Popup.Avviso(c) } }
         }
-        if (Layer.SEDE_PC in layers) map.overlays += marker(map, Config.PC_LAT, Config.PC_LON, pcIcon(ctx)) { popup = Popup.SedePC }
+        if (Layer.SEDE_PC in layers) map.overlays += marker(map, Config.PC_LAT, Config.PC_LON, pcIcon(ctx)) { popupState.value = Popup.SedePC }
         // sensori ARPAV: sempre visibili, toccandoli si apre la stazione (come il pannello della PWA)
         Stations.all.forEach { st ->
-            map.overlays += marker(map, st.lat, st.lon, arpavIcon(ctx)) { nav.tab("sensori"); nav.go("stazione/${st.id}") }
+            map.overlays += marker(map, st.lat, st.lon, arpavIcon(ctx)) { nav.go("stazione/${st.id}") } // "indietro" torna alla mappa
         }
         map.overlays.addAll(keep)
         map.invalidate()
@@ -297,15 +314,15 @@ fun MapScreen(nav: Nav) {
     }
 
     val locLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
-        if (r.values.any { it }) myLocation = enableLocation(map, myLocation)
+        if (r.values.any { it }) myLocationOverlay = enableLocation(map, myLocationOverlay)
     }
 
     Box(Modifier.fillMaxSize()) {
-        AndroidView({ map }, Modifier.fillMaxSize())
+        AndroidView({ (map.parent as? android.view.ViewGroup)?.removeView(map); map }, Modifier.fillMaxSize())
 
         // pulsanti in alto a destra, come il controllo della PWA
         Column(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 10.dp, end = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.End) {
-            MapButton(onClick = { menuOpen = !menuOpen; popup = null }) { Icon(painterResource(R.drawable.ic_layers), "Livelli mappa") }
+            MapButton(onClick = { menuOpen = !menuOpen; popupState.value = null }) { Icon(painterResource(R.drawable.ic_layers), "Livelli mappa") }
             MapButton(onClick = {
                 scope.launch {
                     launch { Repo.loadAree(true) }; launch { Repo.loadCorsiAcqua(true) }; launch { Repo.loadChiusure(true) }
@@ -317,7 +334,7 @@ fun MapScreen(nav: Nav) {
             MapButton(onClick = {
                 val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
                     ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                if (granted) myLocation = enableLocation(map, myLocation)
+                if (granted) myLocationOverlay = enableLocation(map, myLocationOverlay)
                 else locLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
             }) { Icon(painterResource(R.drawable.ic_my_location), "La mia posizione") }
             MapButton(onClick = { nav.go("meteo") }) {
@@ -339,12 +356,12 @@ fun MapScreen(nav: Nav) {
 
         // attribuzione
         Text(
-            if (radarOn) "© OpenStreetMap · Radar-DPC (CC BY-SA)" else "© OpenStreetMap",
+            if (radarOn) "© OpenStreetMap contributors · Radar-DPC (CC BY-SA)" else "© OpenStreetMap contributors",
             Modifier.align(Alignment.BottomEnd).background(Color.White.copy(alpha = 0.8f)).clickable { openUrl(ctx, "https://www.openstreetmap.org/copyright") }.padding(horizontal = 5.dp, vertical = 1.dp),
             fontSize = 10.sp, color = Color(0xFF0078A8),
         )
 
-        popup?.let { p -> PopupCard(p, Modifier.align(Alignment.BottomCenter)) { popup = null } }
+        popup?.let { p -> PopupCard(p, Modifier.align(Alignment.BottomCenter)) { popupState.value = null } }
     }
 }
 
