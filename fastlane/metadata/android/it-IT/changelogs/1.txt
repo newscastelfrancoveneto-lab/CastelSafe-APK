@@ -1,0 +1,6 @@
+Prima versione dell'app Android di CastelSafe.
+- Home con allerta di oggi e domani, sensori, meteo e avvisi
+- Sensori ARPAV con grafici delle ultime 48 ore e soglie di guardia
+- Mappa con aree di protezione civile, avvisi, sensori e corsi d'acqua
+- Notifiche personalizzabili: categorie, livello minimo, suono o silenzio, ore di quiete
+- Guida "cosa fare" e numeri di emergenza
