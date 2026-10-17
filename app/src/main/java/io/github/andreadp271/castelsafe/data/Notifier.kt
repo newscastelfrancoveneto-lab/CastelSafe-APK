@@ -37,8 +37,48 @@ enum class Categoria(val key: String, val titolo: String, val descrizione: Strin
     COMUNICAZIONI("comunicazioni", "Comunicazioni", "Messaggi diretti della Protezione Civile e altri avvisi"),
 }
 
-/** Come avvisare: con suono/vibrazione o in silenzio (solo nella tendina). */
-enum class Modo(val label: String) { SUONO("Con suono"), SILENZIOSA("Silenziosa") }
+/** Come avvisare per un certo livello. */
+enum class Modo(val label: String, val breve: String) {
+    NO("Nessuna notifica", "No"),
+    SILENZIOSA("Silenziosa: solo nella tendina", "Muta"),
+    SUONO("Con suono e vibrazione", "Suono"),
+    ALLARME("Allarme sonoro: sirena anche in silenzioso", "Allarme"),
+}
+
+/**
+ * Una cosa che si può notificare: l'allerta, ogni dato di ogni stazione, gli avvisi, le comunicazioni.
+ * Per ogni livello di [livelli] l'utente sceglie un [Modo]; [Level.VERDE] è il rientro / la fine allerta,
+ * [Level.NESSUNO] indica una voce senza livelli.
+ */
+data class Voce(val key: String, val categoria: Categoria, val titolo: String, val livelli: List<Level>, val stazione: String? = null, val sensore: String? = null) {
+    fun etichetta(l: Level): String = when (categoria) {
+        Categoria.ALLERTA -> if (l == Level.VERDE) "Nessuna allerta o fine allerta" else "Allerta ${l.label.lowercase()}"
+        Categoria.SENSORI -> if (l == Level.VERDE) "Rientro o abbassamento" else {
+            val s = stazione?.let { st -> sensore?.let { Stations.soglie(st, it) } }
+            val v = when (l) { Level.GIALLO -> s?.s1; Level.ARANCIONE -> s?.s2; Level.ROSSO -> s?.s3; else -> null }
+            "Soglia ${l.label.lowercase()}" + (v?.let { " (≥ ${if (it % 1.0 == 0.0) it.toLong().toString() else it.toString().replace('.', ',')})" } ?: "")
+        }
+        Categoria.AVVISI -> "Ogni nuova chiusura o divieto"
+        Categoria.COMUNICAZIONI -> "Ogni messaggio della Protezione Civile"
+    }
+
+    companion object {
+        private val livelli4 = listOf(Level.ROSSO, Level.ARANCIONE, Level.GIALLO, Level.VERDE)
+        val ALLERTA = Voce("allerta", Categoria.ALLERTA, "Allerta meteo", livelli4)
+        val AVVISI = Voce("avvisi", Categoria.AVVISI, "Avvisi e chiusure", listOf(Level.NESSUNO))
+        val COMUNICAZIONI = Voce("comunicazioni", Categoria.COMUNICAZIONI, "Comunicazioni", listOf(Level.NESSUNO))
+
+        fun sensore(stazione: String, tipo: String): Voce {
+            val id = stazione.padStart(4, '0')
+            return Voce("sens_${id}_$tipo", Categoria.SENSORI, Stations.label(tipo), livelli4, id, tipo)
+        }
+
+        /** I dati notificati dal server, stazione per stazione. */
+        fun sensori(): List<Voce> = Stations.all.filter { it.monitored }.flatMap { st -> Stations.sensoriNotificati(st.id).map { sensore(st.id, it) } }
+
+        fun tutte(): List<Voce> = listOf(ALLERTA) + sensori() + listOf(AVVISI, COMUNICAZIONI)
+    }
+}
 
 /** Notifica del server interpretata: categoria, gravità e (per i sensori) stazione e sensore. */
 data class Classificata(
@@ -77,45 +117,41 @@ object Classifier {
     }
 }
 
-/** Preferenze delle notifiche: cosa ricevere e come. */
+/** Preferenze delle notifiche: per ogni voce e livello, se e come avvisare. */
 class NotifySettings(context: Context) {
     private val p = context.getSharedPreferences("notify", Context.MODE_PRIVATE)
 
-    fun enabled(c: Categoria) = p.getBoolean("on_${c.key}", true)
-    fun setEnabled(c: Categoria, v: Boolean) = p.edit().putBoolean("on_${c.key}", v).apply()
+    private fun default(v: Voce, l: Level): Modo = when {
+        v.categoria == Categoria.AVVISI -> Modo.SILENZIOSA
+        l == Level.VERDE -> Modo.SILENZIOSA     // rientri e bollettini senza allerta
+        else -> Modo.SUONO
+    }
 
-    fun modo(c: Categoria) = runCatching { Modo.valueOf(p.getString("modo_${c.key}", null)!!) }
-        .getOrDefault(if (c == Categoria.AVVISI) Modo.SILENZIOSA else Modo.SUONO)
-    fun setModo(c: Categoria, v: Modo) = p.edit().putString("modo_${c.key}", v.name).apply()
+    fun modo(v: Voce, l: Level): Modo =
+        runCatching { Modo.valueOf(p.getString("m_${v.key}_${l.name}", null)!!) }.getOrDefault(default(v, l))
+    fun setModo(v: Voce, l: Level, m: Modo) = p.edit().putString("m_${v.key}_${l.name}", m.name).apply()
 
-    /** Livello minimo del bollettino da notificare (VERDE = tutti, anche il rientro). */
-    var allertaMin: Level
-        get() = runCatching { Level.valueOf(p.getString("allertaMin", null)!!) }.getOrDefault(Level.VERDE)
-        set(v) = p.edit().putString("allertaMin", v.name).apply()
+    /** Almeno una voce della categoria è attiva (per il riepilogo nelle Impostazioni). */
+    fun enabled(c: Categoria) = Voce.tutte().filter { it.categoria == c }.any { v -> v.livelli.any { modo(v, it) != Modo.NO } }
 
-    /** Livello minimo dei superamenti di soglia dei sensori. */
-    var sensoriMin: Level
-        get() = runCatching { Level.valueOf(p.getString("sensoriMin", null)!!) }.getOrDefault(Level.GIALLO)
-        set(v) = p.edit().putString("sensoriMin", v.name).apply()
+    /** Voce e riga di livello a cui appartiene una notifica del server. */
+    fun voceDi(c: Classificata): Pair<Voce, Level> = when (c.categoria) {
+        Categoria.ALLERTA -> Voce.ALLERTA to (if (c.rientro || c.livello <= Level.VERDE) Level.VERDE else c.livello)
+        Categoria.SENSORI -> {
+            val v = if (c.stazione != null && c.sensore != null) Voce.sensore(c.stazione, c.sensore)
+            else Voce("sensori", Categoria.SENSORI, "Sensori", Voce.ALLERTA.livelli)
+            v to (if (c.rientro || c.livello <= Level.VERDE) Level.VERDE else c.livello)
+        }
+        Categoria.AVVISI -> Voce.AVVISI to Level.NESSUNO
+        Categoria.COMUNICAZIONI -> Voce.COMUNICAZIONI to Level.NESSUNO
+    }
 
-    /** Avvisare anche quando un sensore torna sotto soglia. */
-    var sensoriRientri: Boolean
-        get() = p.getBoolean("sensoriRientri", true)
-        set(v) = p.edit().putBoolean("sensoriRientri", v).apply()
-
-    fun stazione(id: String) = p.getBoolean("staz_$id", true)
-    fun setStazione(id: String, v: Boolean) = p.edit().putBoolean("staz_$id", v).apply()
-
-    /** Singolo dato di una stazione (es. solo il livello del Muson, non la pioggia). */
-    fun sensore(stazione: String, tipo: String) = p.getBoolean("sens_${stazione.padStart(4, '0')}_$tipo", true)
-    fun setSensore(stazione: String, tipo: String, v: Boolean) = p.edit().putBoolean("sens_${stazione.padStart(4, '0')}_$tipo", v).apply()
-
-    /**
-     * Allarme sonoro (ignora silenzioso e vibrazione) dal livello indicato in su;
-     * [Level.NESSUNO] = mai. Disattivato finché l'utente non lo sceglie.
-     */
-    fun allarme(c: Categoria): Level = runCatching { Level.valueOf(p.getString("allarme_${c.key}", null)!!) }.getOrDefault(Level.NESSUNO)
-    fun setAllarme(c: Categoria, v: Level) = p.edit().putString("allarme_${c.key}", v.name).apply()
+    /** Modo effettivo per una notifica: l'allarme fuori dalla sua fascia oraria diventa una notifica con suono. */
+    fun modoPer(c: Classificata, now: LocalTime = LocalTime.now()): Modo {
+        val (v, l) = voceDi(c)
+        val m = modo(v, l)
+        return if (m == Modo.ALLARME && allarmeSoloNotte && !inFascia(now, allarmeDa, allarmeA)) Modo.SUONO else m
+    }
 
     /** Durante l'allarme alza al massimo il volume della sveglia (poi lo rimette com'era). */
     var allarmeVolumeMax: Boolean
@@ -126,7 +162,7 @@ class NotifySettings(context: Context) {
         get() = runCatching { SuonoAllarme.valueOf(p.getString("allarmeSuono", null)!!) }.getOrDefault(SuonoAllarme.SIRENA)
         set(v) = p.edit().putString("allarmeSuono", v.name).apply()
 
-    /** L'allarme suona solo nella fascia notturna indicata (di giorno arriva la normale notifica). */
+    /** L'allarme suona solo nella fascia notturna indicata (di giorno arriva la notifica con suono). */
     var allarmeSoloNotte: Boolean
         get() = p.getBoolean("allarmeSoloNotte", false)
         set(v) = p.edit().putBoolean("allarmeSoloNotte", v).apply()
@@ -137,23 +173,17 @@ class NotifySettings(context: Context) {
         get() = p.getInt("allarmeA", 7 * 60)
         set(v) = p.edit().putInt("allarmeA", v).apply()
 
-    fun suonaAllarme(c: Classificata, now: LocalTime = LocalTime.now()): Boolean {
-        val min = allarme(c.categoria)
-        if (min == Level.NESSUNO || c.rientro || c.livello < min) return false
-        return !allarmeSoloNotte || inFascia(now, allarmeDa, allarmeA)
-    }
-
     private fun inFascia(now: LocalTime, da: Int, a: Int): Boolean {
         val m = now.hour * 60 + now.minute
         return if (da <= a) m in da until a else m >= da || m < a
     }
 
-    /** Il livello rosso suona sempre (anche se la categoria è silenziosa o durante la notte). */
+    /** Il livello rosso suona anche nelle ore di quiete. */
     var rossoSempre: Boolean
         get() = p.getBoolean("rossoSempre", true)
         set(v) = p.edit().putBoolean("rossoSempre", v).apply()
 
-    /** Ore di silenzio: le notifiche arrivano lo stesso ma senza suono. */
+    /** Ore di quiete: le notifiche "con suono" arrivano in silenzio (l'allarme no: ha la sua fascia). */
     var quiete: Boolean
         get() = p.getBoolean("quiete", false)
         set(v) = p.edit().putBoolean("quiete", v).apply()
@@ -164,26 +194,7 @@ class NotifySettings(context: Context) {
         get() = p.getInt("quieteA", 7 * 60)
         set(v) = p.edit().putInt("quieteA", v).apply()
 
-    fun inQuiete(now: LocalTime = LocalTime.now()): Boolean {
-        if (!quiete) return false
-        val m = now.hour * 60 + now.minute
-        return if (quieteDa <= quieteA) m in quieteDa until quieteA else m >= quieteDa || m < quieteA
-    }
-
-    /** Decide se una notifica va mostrata con queste preferenze. */
-    fun accetta(c: Classificata): Boolean {
-        if (!enabled(c.categoria)) return false
-        return when (c.categoria) {
-            Categoria.ALLERTA -> c.livello >= allertaMin || (c.rientro && allertaMin == Level.VERDE)
-            Categoria.SENSORI -> {
-                if (c.stazione != null && !stazione(c.stazione)) false
-                else if (c.stazione != null && c.sensore != null && !sensore(c.stazione, c.sensore)) false
-                else if (c.rientro) sensoriRientri
-                else c.livello >= sensoriMin
-            }
-            else -> true
-        }
-    }
+    fun inQuiete(now: LocalTime = LocalTime.now()): Boolean = quiete && inFascia(now, quieteDa, quieteA)
 
     // ── stato del registro del server ────────────────────────────────────────
     var lastId: Long
@@ -239,7 +250,7 @@ object Notifier {
     /** Una notifica più vecchia di così (telefono spento, senza rete) entra in cronologia ma non suona. */
     private const val MAX_AGE_S = 24 * 3600L
 
-    private fun channelId(c: Categoria, m: Modo) = if (m == Modo.SUONO) c.key else "${c.key}_silenziosa"
+    private fun channelId(c: Categoria, m: Modo) = if (m == Modo.SILENZIOSA) "${c.key}_silenziosa" else c.key
 
     fun createChannels(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
@@ -300,11 +311,11 @@ object Notifier {
         var allarme = false
         val ricevute = res.notifiche.sortedBy { it.id }.map { item ->
             val c = Classifier.classify(item)
-            val show = s.accetta(c) && now - item.ts < MAX_AGE_S
+            val modo = s.modoPer(c)
+            val show = modo != Modo.NO && now - item.ts < MAX_AGE_S
             if (show) {
-                val suona = s.suonaAllarme(c)
-                show(ctx, item, c, s, suona)
-                allarme = allarme || suona
+                show(ctx, item, c, s, modo)
+                allarme = allarme || modo == Modo.ALLARME
             }
             Ricevuta(item, show)
         }
@@ -327,13 +338,17 @@ object Notifier {
         }
     }
 
-    fun show(ctx: Context, item: FeedItem, c: Classificata, s: NotifySettings = NotifySettings(ctx), allarme: Boolean = false) {
-        if (!canNotify(ctx)) return
+    fun show(ctx: Context, item: FeedItem, c: Classificata, s: NotifySettings, modo: Modo) {
+        if (!canNotify(ctx) || modo == Modo.NO) return
         val rosso = c.livello == Level.ROSSO && !c.rientro
+        val allarme = modo == Modo.ALLARME
         val channel = when {
+            allarme -> CH_CRITICO
+            modo == Modo.SILENZIOSA -> channelId(c.categoria, Modo.SILENZIOSA)
             rosso && s.rossoSempre -> CH_CRITICO
             s.inQuiete() -> channelId(c.categoria, Modo.SILENZIOSA)
-            else -> channelId(c.categoria, s.modo(c.categoria))
+            rosso -> CH_CRITICO
+            else -> channelId(c.categoria, Modo.SUONO)
         }
         val intent = Intent(ctx, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -369,14 +384,18 @@ object Notifier {
         runCatching { NotificationManagerCompat.from(ctx).notify(item.tag, 0, n) }
     }
 
-    /** Notifica di prova per verificare suono e aspetto della categoria scelta. */
-    fun test(ctx: Context, c: Categoria) {
+    /** Notifica di prova per verificare come arriva una voce a un certo livello (l'allarme suona 5 secondi). */
+    fun test(ctx: Context, v: Voce, l: Level) {
+        val s = NotifySettings(ctx)
+        val m = s.modo(v, l)
+        if (m == Modo.NO) return
         val item = FeedItem(
-            id = 0, ts = System.currentTimeMillis() / 1000, tag = "prova-${c.key}",
-            title = "Prova: ${c.titolo}",
-            body = "Così arriveranno le notifiche di questo tipo (${NotifySettings(ctx).modo(c).label.lowercase()}).",
+            id = 0, ts = System.currentTimeMillis() / 1000, tag = "prova-${v.key}",
+            title = "Prova: ${v.titolo}",
+            body = "${v.etichetta(l)} — ${m.label.lowercase()}.",
         )
-        show(ctx, item, Classificata(c, Level.NESSUNO, false))
+        show(ctx, item, Classificata(v.categoria, if (l == Level.VERDE) Level.VERDE else l, l == Level.VERDE), s, m)
+        if (m == Modo.ALLARME) Alarm.start(ctx, 5)
     }
 }
 

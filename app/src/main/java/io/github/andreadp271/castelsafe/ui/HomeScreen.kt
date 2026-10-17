@@ -214,23 +214,27 @@ private fun AllertaCard(a: Allerta?, loading: Boolean, onClick: () -> Unit) {
         color = if (max == Level.NESSUNO) MaterialTheme.colorScheme.surfaceContainerLow else c.copy(alpha = 0.14f),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Allerta meteo-idro", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        when {
-                            a == null && loading -> "Caricamento…"
-                            a == null -> "Bollettino non disponibile"
-                            max == Level.VERDE -> "Nessuna allerta"
-                            else -> "Allerta ${max.label.lowercase()}"
-                        },
-                        style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
-                    )
-                }
-                if (max != Level.NESSUNO) LevelChip(max)
-            }
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                when {
+                    a == null && loading -> "Caricamento…"
+                    a == null -> "Bollettino non disponibile"
+                    max == Level.VERDE -> "Nessuna allerta"
+                    else -> "Allerta ${max.label.lowercase()}"
+                },
+                style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+            )
             if (a != null) {
+                // riepilogo a tabella: i rischi in colonna (simbolo una volta sola), i giorni in riga
+                Row(verticalAlignment = Alignment.Bottom) {
+                    androidx.compose.foundation.layout.Spacer(Modifier.weight(0.24f))
+                    rischiSimboli.forEach { (simbolo, nome) ->
+                        Column(Modifier.weight(0.152f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(simbolo, fontSize = 20.sp)
+                            Text(nome, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                    }
+                }
                 GiornoRow("Oggi", a.oggi)
                 GiornoRow("Domani", a.domani)
                 Muted("Zona ${a.zona ?: "E1"} · bollettino ${a.aggiornamento?.numero ?: "—"} del ${a.aggiornamento?.data ?: "—"} ${a.aggiornamento?.ora?.take(5).orEmpty()}")
@@ -239,16 +243,22 @@ private fun AllertaCard(a: Allerta?, loading: Boolean, onClick: () -> Unit) {
     }
 }
 
+/** Simbolo e nome breve dei rischi, nell'ordine di [AllertaGiorno.rischi]. */
+private val rischiSimboli = listOf(
+    "🌊" to "Idraulico",
+    "⛰️" to "Frane",
+    "⛈️" to "Temporali",
+    "💨" to "Vento",
+    "🌡️" to "Calore",
+)
+
 @Composable
 private fun GiornoRow(label: String, g: AllertaGiorno?) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(0.28f), fontWeight = FontWeight.SemiBold)
-        Row(Modifier.weight(0.72f), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            g?.rischi?.forEach { (nome, l) ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                    LevelDot(l, 14.dp)
-                    Text(nome.take(5).trimEnd() + if (nome.length > 5) "." else "", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                }
+        Text(label, Modifier.weight(0.24f), fontWeight = FontWeight.SemiBold)
+        rischiSimboli.indices.forEach { i ->
+            Box(Modifier.weight(0.152f), contentAlignment = Alignment.Center) {
+                LevelDot(g?.rischi?.getOrNull(i)?.second ?: Level.NESSUNO, 18.dp)
             }
         }
     }
