@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -20,6 +20,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -64,7 +65,7 @@ private val tabs = listOf(
     Tab("sensori", "Sensori") { painterResource(R.drawable.ic_tab_sensori) },
     Tab("mappa", "Mappa") { painterResource(R.drawable.ic_tab_mappa) },
     Tab("avvisi", "Avvisi") { rememberVectorPainter(Icons.Filled.Warning) },
-    Tab("altro", "Altro") { rememberVectorPainter(Icons.Filled.Menu) },
+    Tab("altro", "Impostazioni") { rememberVectorPainter(Icons.Filled.Settings) },
 )
 
 private val topLevel = setOf("home", "sensori", "mappa", "avvisi", "altro")
@@ -83,7 +84,8 @@ fun App(pendingRoute: String?, onRouteHandled: () -> Unit) {
     val nav = Nav(controller)
     val entry by controller.currentBackStackEntryAsState()
     // la scheda evidenziata resta quella da cui si è partiti (es. il meteo aperto dalla mappa)
-    var current by rememberSaveable { mutableStateOf("home") }
+    val start = remember { io.github.andreadp271.castelsafe.data.AppSettings.startTab.takeIf { it in topLevel } ?: "home" }
+    var current by rememberSaveable { mutableStateOf(start) }
     LaunchedEffect(entry) { entry?.destination?.route?.takeIf { it in topLevel }?.let { current = it } }
     val chiusure by Repo.chiusure.collectAsState()
     val attivi = chiusure.data.orEmpty().count { it.stato() == Chiusura.Stato.IN_CORSO }
@@ -116,7 +118,7 @@ fun App(pendingRoute: String?, onRouteHandled: () -> Unit) {
             }
         },
     ) { inner ->
-        NavHost(controller, startDestination = "home", modifier = Modifier.fillMaxSize().padding(inner).consumeWindowInsets(inner)) {
+        NavHost(controller, startDestination = start,modifier = Modifier.fillMaxSize().padding(inner).consumeWindowInsets(inner)) {
             composable("home") { HomeScreen(nav) }
             composable("allerta") { AllertaScreen(nav) }
             composable("guida") { GuidaScreen(nav) }
@@ -124,7 +126,7 @@ fun App(pendingRoute: String?, onRouteHandled: () -> Unit) {
             composable("stazione/{id}") { StazioneScreen(nav, it.arguments?.getString("id").orEmpty()) }
             composable("mappa") { MapScreen(nav) }
             composable("avvisi") { AvvisiScreen(nav) }
-            composable("altro") { AltroScreen(nav) }
+            composable("altro") { SettingsScreen(nav) }
             composable("meteo") { MeteoScreen(nav) }
             composable("contatti") { ContattiScreen(nav) }
             composable("notifiche") { NotificheScreen(nav) }

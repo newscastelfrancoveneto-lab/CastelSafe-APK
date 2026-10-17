@@ -101,6 +101,8 @@ object MapFocus {
     val layers = MutableStateFlow(Layer.entries.toSet())
     /** Radar precipitazioni attivo (si accende anche dal meteo). */
     val radar = MutableStateFlow(false)
+    /** L'impostazione "Radar all'apertura" si applica una volta per sessione. */
+    var radarDefaultApplied = false
 }
 
 /** Livelli del menu, nelle stesse sezioni della PWA. */
@@ -145,6 +147,10 @@ fun MapScreen(nav: Nav) {
     val density = ctx.resources.displayMetrics.density
 
     LaunchedEffect(Unit) {
+        if (!MapFocus.radarDefaultApplied) {
+            MapFocus.radarDefaultApplied = true
+            if (io.github.andreadp271.castelsafe.data.AppSettings.radarAtStart) MapFocus.radar.value = true
+        }
         launch { Repo.loadChiusure() }; launch { Repo.loadAree() }; launch { Repo.loadCorsiAcqua() }
         launch { Repo.loadConfine() }; launch { Repo.loadMeteo() }
     }

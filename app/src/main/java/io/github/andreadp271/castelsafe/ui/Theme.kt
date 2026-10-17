@@ -1,6 +1,13 @@
 package io.github.andreadp271.castelsafe.ui
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+import io.github.andreadp271.castelsafe.data.AppSettings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -51,9 +58,28 @@ private val Dark = darkColorScheme(
     outlineVariant = Color(0xFF45393C),
 )
 
+/** Tema scuro secondo la scelta nelle impostazioni (o il sistema). */
+@Composable
+fun isDark(): Boolean {
+    val t by AppSettings.theme.collectAsState()
+    return when (t) {
+        AppSettings.Theme.SYSTEM -> isSystemInDarkTheme()
+        AppSettings.Theme.LIGHT -> false
+        AppSettings.Theme.DARK -> true
+    }
+}
+
 @Composable
 fun CastelSafeTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) Dark else Light, content = content)
+    val dark = isDark()
+    val palette by AppSettings.palette.collectAsState()
+    val ctx = LocalContext.current
+    val scheme = when {
+        palette == AppSettings.Palette.DYNAMIC && Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+        dark -> Dark
+        else -> Light
+    }
+    MaterialTheme(colorScheme = scheme, content = content)
 }
 
 /** Colori dei livelli di allerta (scala ufficiale verde → rosso). */

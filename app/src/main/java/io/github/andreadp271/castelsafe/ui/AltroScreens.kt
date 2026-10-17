@@ -80,47 +80,8 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 
-/** Ultima release trovata su GitHub in questa sessione (per mostrare l'avviso nel menu). */
-private val availableUpdate = MutableStateFlow<Updater.Release?>(null)
-private var updateChecked = false
-
-@Composable
-fun AltroScreen(nav: Nav) {
-    val ctx = LocalContext.current
-    val update by availableUpdate.collectAsState()
-    LaunchedEffect(Unit) {
-        if (!updateChecked) {
-            updateChecked = true
-            runCatching { Updater.latest() }.getOrNull()?.takeIf { Updater.isNewer(it.version) }?.let { availableUpdate.value = it }
-        }
-    }
-    Column(Modifier.fillMaxSize()) {
-        Bar("Altro")
-        LazyColumn(contentPadding = screenPadding, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            update?.let { u ->
-                item {
-                    Panel(onClick = { nav.go("aggiornamenti") }) {
-                        Text("Aggiornamento disponibile", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                        Muted("Versione ${u.version} · tocca per installarla")
-                    }
-                }
-            }
-            item {
-                Panel(padding = 0.dp) {
-                    MenuRow("Notifiche", "Scegli quali avvisi ricevere e come", icon = Icons.Filled.Notifications) { nav.go("notifiche") }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    MenuRow("Aggiornamenti", "Versione ${BuildConfig.VERSION_NAME}", icon = Icons.Filled.Refresh) { nav.go("aggiornamenti") }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    MenuRow("Condividi CastelSafe", "Invia l'app ad amici e familiari", icon = Icons.Filled.Share) {
-                        share(ctx, "CastelSafe: allerte meteo, livelli dei fiumi, avvisi e chiusure a Castelfranco Veneto.\nAndroid: https://github.com/${Config.GITHUB_REPO}/releases/latest\nWeb e iPhone: ${Config.SITE_URL}")
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    MenuRow("Informazioni e privacy", icon = Icons.Filled.Info) { nav.go("info") }
-                }
-            }
-        }
-    }
-}
+/** Ultima release trovata su GitHub in questa sessione (avviso nelle impostazioni). */
+internal val availableUpdate = MutableStateFlow<Updater.Release?>(null)
 
 // ── Contatti ─────────────────────────────────────────────────────────────────
 

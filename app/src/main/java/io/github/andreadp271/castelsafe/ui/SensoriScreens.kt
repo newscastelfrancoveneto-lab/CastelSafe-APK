@@ -257,6 +257,13 @@ fun StazioneScreen(nav: Nav, id: String) {
     val model = remember(scheda, all) { scheda?.let { buildModel(st, it, all) } }
     var fullscreen by remember { mutableStateOf(false) }
 
+    // impostazione "Schermo sempre acceso" mentre si guarda un sensore
+    val activity = ctx as? Activity
+    DisposableEffect(Unit) {
+        if (io.github.andreadp271.castelsafe.data.AppSettings.keepScreenOn) activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+
     // countdown al prossimo dato (ogni :00 e :30), poi "In attesa di ARPAV" finché non arriva
     val latest = all.mapNotNull { it.ultimo?.istante }.maxOrNull()
     val latestState by rememberUpdatedState(latest)
