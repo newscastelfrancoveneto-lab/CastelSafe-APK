@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">CastelSafe</string>
+    <string name="widget_allerta">Allerta CastelSafe</string>
+    <string name="widget_allerta_desc">Livello di allerta di oggi e domani</string>
+    <string name="widget_sensori">Fiumi e meteo</string>
+    <string name="widget_sensori_desc">Livello di Muson e Avenale, temperatura e pioggia</string>
 </resources>

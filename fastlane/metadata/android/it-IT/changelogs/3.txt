@@ -1,0 +1,1 @@
+- Widget per la schermata Home: «Allerta CastelSafe» (oggi e domani) e «Fiumi e meteo» (Muson, Avenale, temperatura, pioggia)

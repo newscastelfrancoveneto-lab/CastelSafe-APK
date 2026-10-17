@@ -43,5 +43,29 @@
         <receiver
             android:name=".data.AlarmStopReceiver"
             android:exported="false" />
+
+        <!-- widget della schermata Home -->
+        <receiver
+            android:name=".widget.AllertaWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_allerta">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_allerta" />
+        </receiver>
+        <receiver
+            android:name=".widget.SensoriWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_sensori">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_sensori" />
+        </receiver>
     </application>
 </manifest>

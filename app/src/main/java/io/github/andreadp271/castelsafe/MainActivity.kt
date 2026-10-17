@@ -99,6 +99,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        super.onStop()
+        // uscendo dall'app i widget mostrano i dati appena visti
+        kotlinx.coroutines.MainScope().launch { runCatching { io.github.andreadp271.castelsafe.widget.Widgets.updateAll(applicationContext) } }
+    }
+
     override fun onDestroy() {
         // la mappa è conservata tra le schede: va rilasciata con l'Activity che la ospita
         if (isFinishing || !isChangingConfigurations) io.github.andreadp271.castelsafe.ui.MapFocus.release()

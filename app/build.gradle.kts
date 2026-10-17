@@ -21,8 +21,8 @@ android {
         applicationId = "io.github.andreadp271.castelsafe"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
     }
 
     signingConfigs {
@@ -77,6 +77,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("androidx.glance:glance-appwidget:1.1.1")
 
     testImplementation("junit:junit:4.13.2")
 }

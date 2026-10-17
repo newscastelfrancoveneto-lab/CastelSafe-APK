@@ -402,6 +402,8 @@ object Notifier {
 class FeedWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         val s = NotifySettings(applicationContext)
+        // i widget si aggiornano a ogni controllo, anche se il registro notifiche non risponde
+        runCatching { io.github.andreadp271.castelsafe.widget.Widgets.updateAll(applicationContext) }
         return try {
             Notifier.check(applicationContext)
             s.lastCheck = System.currentTimeMillis()
