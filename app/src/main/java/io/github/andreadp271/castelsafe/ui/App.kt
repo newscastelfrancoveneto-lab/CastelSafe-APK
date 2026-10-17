@@ -19,6 +19,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -64,13 +67,14 @@ private val tabs = listOf(
     Tab("altro", "Altro") { rememberVectorPainter(Icons.Filled.Menu) },
 )
 
-/** Scheda a cui appartiene ogni schermata (per evidenziarla nella barra). */
-private fun tabOf(route: String?): String = when {
-    route == null -> "home"
+private val topLevel = setOf("home", "sensori", "mappa", "avvisi", "altro")
+
+/** Scheda "naturale" di una schermata aperta da una notifica. */
+private fun tabOf(route: String): String = when {
     route.startsWith("stazione") -> "sensori"
-    route == "allerta" || route == "guida" -> "home"
-    route in setOf("meteo", "contatti", "notifiche", "info", "aggiornamenti") -> "altro"
-    else -> route
+    route in setOf("notifiche", "info", "aggiornamenti") -> "altro"
+    route in topLevel -> route
+    else -> "home"
 }
 
 @Composable
@@ -78,7 +82,9 @@ fun App(pendingRoute: String?, onRouteHandled: () -> Unit) {
     val controller = rememberNavController()
     val nav = Nav(controller)
     val entry by controller.currentBackStackEntryAsState()
-    val current = tabOf(entry?.destination?.route)
+    // la scheda evidenziata resta quella da cui si è partiti (es. il meteo aperto dalla mappa)
+    var current by rememberSaveable { mutableStateOf("home") }
+    LaunchedEffect(entry) { entry?.destination?.route?.takeIf { it in topLevel }?.let { current = it } }
     val chiusure by Repo.chiusure.collectAsState()
     val attivi = chiusure.data.orEmpty().count { it.stato() == Chiusura.Stato.IN_CORSO }
 
@@ -86,7 +92,7 @@ fun App(pendingRoute: String?, onRouteHandled: () -> Unit) {
         val r = pendingRoute ?: return@LaunchedEffect
         when {
             r.startsWith("stazione/") -> { nav.tab("sensori"); nav.go(r) }
-            r in setOf("home", "sensori", "mappa", "avvisi", "altro") -> nav.tab(r)
+            r in topLevel -> nav.tab(r)
             else -> { nav.tab(tabOf(r)); nav.go(r) }
         }
         onRouteHandled()

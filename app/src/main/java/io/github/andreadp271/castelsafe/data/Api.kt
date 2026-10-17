@@ -272,7 +272,7 @@ object Api {
     val queryCorsiAcqua = """
         [out:json][timeout:30];$AREA
         (
-          way["waterway"~"^(river|stream|canal)$"](area.a);
+          way["waterway"~"^(river|stream|canal|drain|ditch)$"](area.a);
         );
         out geom qt;
     """.trimIndent()
@@ -300,7 +300,37 @@ object Api {
         AreaPC(tipo, t["name"] ?: t["ref"], g)
     }
 
-    fun parseCorsiAcqua(s: String): List<CorsoAcqua> = ways(s).map { (t, g) -> CorsoAcqua(t["name"], t["waterway"].orEmpty(), g) }
+    fun parseCorsiAcqua(s: String): List<CorsoAcqua> = ways(s).map { (t, g) -> CorsoAcqua(t["name"] ?: t["ref"], t["waterway"].orEmpty(), g) }
+
+    /** Confine comunale (Nominatim, relazione 45549), disegnato tratteggiato come nella PWA. */
+    suspend fun confineRaw(): String = withContext(Dispatchers.IO) {
+        getText("https://nominatim.openstreetmap.org/lookup?osm_type=R&osm_ids=45549&format=json&polygon_geojson=1")
+    }
+
+    fun parseConfine(s: String): List<List<Pair<Double, Double>>> {
+        val geo = json.parseToJsonElement(s).jsonArray.firstOrNull()?.jsonObject?.get("geojson") ?: throw IOException("Confine non trovato")
+        val forme = mutableListOf<List<Pair<Double, Double>>>()
+        collectGeometry(geo, forme, mutableListOf())
+        return forme
+    }
+
+    // ── Radar DPC (VMI): stessa sorgente e palette della PWA ─────────────────
+
+    /** Istante (ms UTC) dell'ultima mappa radar disponibile. */
+    suspend fun radarLast(): Long = withContext(Dispatchers.IO) {
+        val o = json.parseToJsonElement(getText("https://radar-api.protezionecivile.it/findLastProductByType?type=VMI")).jsonObject
+        o["lastProducts"]?.jsonArray?.firstOrNull()?.jsonObject?.get("time")?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+            ?: throw IOException("Nessun prodotto radar")
+    }
+
+    suspend fun radarTile(time: Long, z: Int, x: Int, y: Int): ByteArray? = withContext(Dispatchers.IO) {
+        val d = java.time.Instant.ofEpochMilli(time).atZone(ZoneOffset.UTC)
+        val path = "%04d/%02d/%02d/%02d%02d".format(d.year, d.monthValue, d.dayOfMonth, d.hour, d.minute)
+        runCatching {
+            client.newCall(Request.Builder().url("https://s3-prod-dpc-radar-webp-cache.s3.eu-south-1.amazonaws.com/VMI/$path/$z/$x/$y/vmi.webp").build())
+                .execute().use { r -> if (r.isSuccessful) r.body!!.bytes() else null }
+        }.getOrNull()
+    }
 
     /** "2026-10-17T16:45:20.786683" → ora locale. */
     fun parseIso(s: String?): LocalDateTime? = runCatching { LocalDateTime.parse(s) }.getOrNull()

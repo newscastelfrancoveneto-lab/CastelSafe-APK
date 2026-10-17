@@ -105,19 +105,6 @@ fun AltroScreen(nav: Nav) {
                     }
                 }
             }
-            item { SectionTitle("Informarsi") }
-            item {
-                Panel(padding = 0.dp) {
-                    MenuRow("Meteo e previsioni", "Bollettino ARPAV per Treviso e pianura", iconPainter = painterResource(R.drawable.ic_tab_sensori)) { nav.go("meteo") }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    MenuRow("Radar precipitazioni", "Dove sta piovendo adesso (Protezione Civile)", iconPainter = painterResource(R.drawable.ic_tab_mappa)) { openUrl(ctx, Config.RADAR_URL) }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    MenuRow("Cosa fare in caso di allerta", "Alluvione, temporali, vento, calore, terremoto", icon = Icons.Filled.Warning) { nav.go("guida") }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    MenuRow("Numeri utili", "Emergenze nazionali e Protezione Civile locale", icon = Icons.Filled.Call) { nav.go("contatti") }
-                }
-            }
-            item { SectionTitle("App") }
             item {
                 Panel(padding = 0.dp) {
                     MenuRow("Notifiche", "Scegli quali avvisi ricevere e come", icon = Icons.Filled.Notifications) { nav.go("notifiche") }
@@ -130,57 +117,6 @@ fun AltroScreen(nav: Nav) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     MenuRow("Informazioni e privacy", icon = Icons.Filled.Info) { nav.go("info") }
                 }
-            }
-        }
-    }
-}
-
-// ── Meteo ────────────────────────────────────────────────────────────────────
-
-@Composable
-fun MeteoScreen(nav: Nav) {
-    val res by Repo.meteo.collectAsState()
-    val scope = rememberCoroutineScope()
-    val ctx = LocalContext.current
-    LaunchedEffect(Unit) { Repo.loadMeteo() }
-    Column(Modifier.fillMaxSize()) {
-        Bar("Meteo", Config.WEATHER_ZONE, onBack = nav::back, actions = {
-            androidx.compose.material3.IconButton(onClick = { scope.launch { Repo.loadMeteo(true) } }) { Icon(Icons.Filled.Refresh, "Aggiorna") }
-        })
-        if (res.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        LazyColumn(contentPadding = screenPadding, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item { ResNotice(res, "Previsioni") }
-            res.data?.let { m ->
-                item { Muted("Bollettino ARPAV emesso il ${m.emissione}, aggiornato il ${m.aggiornamento}") }
-                m.scadenze.groupBy { it.giorno }.forEach { (giorno, list) ->
-                    item { SectionTitle(giorno) }
-                    item {
-                        Panel(padding = 0.dp) {
-                            list.forEachIndexed { i, s ->
-                                if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    RemoteIcon(s.simbolo, 52.dp)
-                                    Hspace(14.dp)
-                                    Column(Modifier.weight(1f)) {
-                                        Text((s.fascia ?: "Giornata").replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(s.cielo, fontWeight = FontWeight.SemiBold)
-                                        Muted(listOf(
-                                            s.temperatura,
-                                            s.precipitazioni.takeIf { it.isNotBlank() }?.let { "Precipitazioni: ${it.lowercase()}" },
-                                            s.probabilita.takeIf { it.isNotBlank() }?.let { "probabilità $it" },
-                                            s.quotaNeve.takeIf { it.isNotBlank() }?.let { "neve $it" },
-                                        ).filterNotNull().filter { it.isNotBlank() }.joinToString(" · "))
-                                        if (s.attendibilita.isNotBlank()) Muted("Attendibilità: ${s.attendibilita.lowercase()}")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            item {
-                Muted("Fonte: ARPAV Veneto, bollettino meteo per zone.")
-                TextButton(onClick = { openUrl(ctx, Config.RADAR_URL) }) { Text("Radar precipitazioni (Protezione Civile)") }
             }
         }
     }

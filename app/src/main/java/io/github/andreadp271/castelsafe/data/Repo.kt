@@ -124,7 +124,11 @@ object Repo {
         load("aree", aree, 24 * 60, force, { Api.overpass(Api.queryAree) }, Api::parseAree)
 
     suspend fun loadCorsiAcqua(force: Boolean = false) =
-        load("corsi_acqua", corsiAcqua, 7 * 24 * 60, force, { Api.overpass(Api.queryCorsiAcqua) }, Api::parseCorsiAcqua)
+        load("corsi_acqua_v2", corsiAcqua, 7 * 24 * 60, force, { Api.overpass(Api.queryCorsiAcqua) }, Api::parseCorsiAcqua)
+
+    val confine = MutableStateFlow(Res<List<List<Pair<Double, Double>>>>())
+    suspend fun loadConfine(force: Boolean = false) =
+        load("confine", confine, 30 * 24 * 60, force, Api::confineRaw, Api::parseConfine)
 
     /** Tutto quello che serve alla schermata Home. */
     suspend fun refreshHome(force: Boolean) = coroutineScope {

@@ -4,7 +4,19 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -120,12 +132,12 @@ fun HomeScreen(nav: Nav) {
                 }
 
                 // Meteo
-                meteo.data?.scadenze?.firstOrNull()?.let { s ->
+                meteo.data?.upcoming()?.firstOrNull()?.let { s ->
                     item { SectionTitle("Meteo") }
                     item {
                         Panel(onClick = { nav.go("meteo") }) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                RemoteIcon(s.simbolo, 48.dp)
+                                WeatherIcon(meteoCategory(s.cielo, s.precipitazioni).nightAware(), 52.dp, s.probInt())
                                 Hspace(14.dp)
                                 Column(Modifier.weight(1f)) {
                                     Text(s.cielo.ifBlank { "Previsioni" }, fontWeight = FontWeight.SemiBold)
@@ -156,13 +168,8 @@ fun HomeScreen(nav: Nav) {
                 }
 
                 item {
-                    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(onClick = { nav.go("guida") }, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Filled.Info, null); Hspace(6.dp); Text("Cosa fare")
-                        }
-                        FilledTonalButton(onClick = { nav.go("contatti") }, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Filled.Call, null); Hspace(6.dp); Text("Emergenze")
-                        }
+                    FilledTonalButton(onClick = { nav.go("guida") }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                        Icon(Icons.Filled.Info, null); Hspace(6.dp); Text("Cosa fare in caso di allerta")
                     }
                 }
             }
@@ -310,10 +317,29 @@ private val guida = listOf(
 @Composable
 fun GuidaScreen(nav: Nav) {
     val ctx = LocalContext.current
+    var zoom by remember { mutableStateOf(false) }
+    if (zoom) ZoomImage(io.github.andreadp271.castelsafe.R.drawable.infografica_allerte) { zoom = false }
     Column(Modifier.fillMaxSize()) {
         Bar("Cosa fare", "Guida rapida in caso di allerta", onBack = nav::back)
         LazyColumn(contentPadding = screenPadding, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            guida.forEach { (titolo, parti) ->
+            item {
+                Panel {
+                    Text("Colori delle allerte", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "I colori dell'allerta indicano un livello crescente di criticità attesa sul territorio. La valutazione riguarda i rischi idraulico, " +
+                            "idrogeologico e, quando previsto, i temporali. Per il rischio temporali il livello massimo previsto è l'arancione.",
+                        Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodyMedium,
+                    )
+                    androidx.compose.foundation.Image(
+                        androidx.compose.ui.res.painterResource(io.github.andreadp271.castelsafe.R.drawable.infografica_allerte),
+                        "Infografica con i colori delle allerte meteo-idro",
+                        Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(12.dp)).clickable { zoom = true },
+                        contentScale = androidx.compose.ui.layout.ContentScale.FillWidth,
+                    )
+                    Muted("Tocca per ingrandire", Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp))
+                }
+            }
+            guida.drop(1).forEach { (titolo, parti) ->
                 item {
                     Panel {
                         Text(titolo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -336,6 +362,32 @@ fun GuidaScreen(nav: Nav) {
                 }
             }
             item { TextButton(onClick = { openUrl(ctx, "https://iononrischio.protezionecivile.it/") }) { Text("Io non rischio") } }
+        }
+    }
+}
+
+/** Immagine a schermo intero con zoom a due dita (come il lightbox della PWA). */
+@Composable
+fun ZoomImage(res: Int, onClose: () -> Unit) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black).clickable { if (scale <= 1.01f) onClose() }) {
+            androidx.compose.foundation.Image(
+                androidx.compose.ui.res.painterResource(res), null,
+                Modifier.fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, z, _ ->
+                            scale = (scale * z).coerceIn(1f, 5f)
+                            offset = if (scale == 1f) Offset.Zero else offset + pan
+                        }
+                    }
+                    .graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y },
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+            )
+            IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
+                Icon(androidx.compose.material.icons.Icons.Filled.Close, "Chiudi", tint = androidx.compose.ui.graphics.Color.White)
+            }
         }
     }
 }
