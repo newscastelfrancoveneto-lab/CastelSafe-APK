@@ -42,8 +42,16 @@ class Nav(val c: NavHostController) {
     fun back() { if (!c.popBackStack()) tab("home") }
     fun go(route: String) { c.navigate(route) { launchSingleTop = true } }
 
-    /** Cambio di scheda: come in Capotreno, ogni scheda conserva la propria pila. */
+    /**
+     * Cambio di scheda: ogni scheda conserva la propria pila, tranne quella iniziale che torna
+     * sempre alla sua radice (altrimenti ripristinerebbe ad esempio il meteo aperto prima).
+     */
     fun tab(route: String) {
+        val startRoute = c.graph.findStartDestination().route
+        if (route == startRoute) {
+            c.popBackStack(c.graph.findStartDestination().id, inclusive = false)
+            return
+        }
         c.navigate(route) {
             popUpTo(c.graph.findStartDestination().id) { saveState = true }
             launchSingleTop = true
@@ -107,7 +115,11 @@ fun App(pendingRoute: String?, onRouteHandled: () -> Unit) {
                 tabs.forEach { t ->
                     NavigationBarItem(
                         selected = current == t.route,
-                        onClick = { if (current == t.route) controller.popBackStack(t.route, false) else nav.tab(t.route) },
+                        onClick = {
+                            // di nuovo sulla scheda attiva: torna alla sua schermata principale
+                            if (current == t.route && t.route != start) controller.popBackStack(t.route, false) else nav.tab(t.route)
+                            current = t.route
+                        },
                         icon = {
                             if (t.route == "avvisi" && attivi > 0) BadgedBox(badge = { Badge { Text("$attivi") } }) { Icon(t.icon(), null) }
                             else Icon(t.icon(), null)

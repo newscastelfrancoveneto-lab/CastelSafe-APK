@@ -129,12 +129,18 @@ fun WeatherIcon(icon: MeteoIcon, size: Dp, prob: Int? = null, modifier: Modifier
                 fun wisp(y: Float) {
                     // attraversa da -26 a +46 con dissolvenza ai bordi
                     val x = -26f + 72f * p9
-                    val a = when { p9 < 0.12f -> p9 / 0.12f * 0.4f; p9 > 0.88f -> (1 - p9) / 0.12f * 0.4f; else -> 0.4f }
-                    val c = Color(0xFFCBD5E1).copy(alpha = a)
+                    val peak = 0.7f
+                    val a = when { p9 < 0.12f -> p9 / 0.12f * peak; p9 > 0.88f -> (1 - p9) / 0.12f * peak; else -> peak }
+                    // forme opache su un livello unico, poi trasparenza applicata all'insieme:
+                    // dove i cerchi si sovrappongono non risultano più scuri (come l'opacity del gruppo SVG)
+                    val c = Color(0xFFCBD5E1)
+                    val layer = androidx.compose.ui.graphics.Paint().apply { alpha = a }
+                    drawContext.canvas.saveLayer(androidx.compose.ui.geometry.Rect(x - 1f, y - 9f, x + 20f, y + 8f), layer)
                     translate(x, 0f) {
                         drawRoundRect(c, Offset(0f, y), Size(17f, 6.5f), CornerRadius(3.2f))
                         drawCircle(c, 3.6f, Offset(4f, y)); drawCircle(c, 5f, Offset(9f, y - 3)); drawCircle(c, 3.6f, Offset(14.5f, y))
                     }
+                    drawContext.canvas.restore()
                 }
                 fun spread(n: Int, a: Float, b: Float) = (0 until n).map { if (n == 1) (a + b) / 2 else a + (b - a) / (n - 1) * it }
                 fun rain(n: Int, y0: Float, y1: Float, a: Float = 13f, b: Float = 33f) {
