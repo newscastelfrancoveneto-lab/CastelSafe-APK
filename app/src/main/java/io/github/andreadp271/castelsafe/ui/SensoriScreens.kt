@@ -306,25 +306,22 @@ fun StazioneScreen(nav: Nav, id: String) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        Bar(st.name, st.subtitle, onBack = nav::back, actions = {
+        Bar(st.name, st.subtitle, onBack = nav::back, titleExtra = {
+            Text("#${st.id.trimStart('0')}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (res.data != null) Surface(
+                shape = RoundedCornerShape(50),
+                color = if (waitingFrom != null) Color(0xFFFFEDD5) else MaterialTheme.colorScheme.primaryContainer,
+                contentColor = if (waitingFrom != null) Color(0xFFC2410C) else MaterialTheme.colorScheme.onPrimaryContainer,
+            ) {
+                Text(if (waitingFrom != null) "In attesa ARPAV" else "⏱ $countdown", Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            }
+        }, actions = {
             IconButton(onClick = { nav.showOnMap(st.lat, st.lon) }) { Icon(Icons.Filled.Place, "Mostra sulla mappa") }
             IconButton(onClick = { scope.launch { Repo.loadStazione(st.id, true) } }) { Icon(Icons.Filled.Refresh, "Aggiorna") }
         })
         if (res.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         LazyColumn(contentPadding = screenPadding, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { ResNotice(res, "Dati della stazione") }
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Muted("Stazione #${st.id.trimStart('0')} · ultimo dato ${fmtDateTime(latest)}", Modifier.weight(1f))
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = if (waitingFrom != null) Color(0xFFFFEDD5) else MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = if (waitingFrom != null) Color(0xFFC2410C) else MaterialTheme.colorScheme.onPrimaryContainer,
-                    ) {
-                        Text(if (waitingFrom != null) countdown else "Prossimo dato $countdown", Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
             if (schede.size > 1) item {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     schede.forEachIndexed { i, s -> FilterChip(selected = s == scheda, onClick = { tab = i }, label = { Text(s.label) }) }
