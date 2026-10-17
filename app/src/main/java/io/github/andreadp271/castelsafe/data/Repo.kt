@@ -42,10 +42,16 @@ object Repo {
 
     private val locks = mutableMapOf<String, Mutex>()
 
+    private lateinit var assets: android.content.res.AssetManager
+
     fun init(ctx: Context) {
         if (::dir.isInitialized) return
         dir = File(ctx.filesDir, "cache").apply { mkdirs() }
+        assets = ctx.assets
     }
+
+    /** Copia inclusa nell'app (assets/seed): la mappa ha aree e corsi d'acqua già al primo avvio. */
+    private fun seed(key: String): String? = runCatching { assets.open("seed/$key.txt").use { it.readBytes().decodeToString() } }.getOrNull()
 
     fun stazione(id: String): StateFlow<Res<List<Serie>>> = synchronized(stazioni) {
         stazioni.getOrPut(id) { MutableStateFlow(Res()) }
@@ -69,16 +75,21 @@ object Repo {
         val mutex = synchronized(locks) { locks.getOrPut(key) { Mutex() } }
         mutex.withLock {
             val f = file(key)
-            // prima apertura: mostra subito la copia su disco
+            // prima apertura: mostra subito la copia su disco (o quella inclusa nell'app)
             if (flow.value.data == null && f.exists()) {
                 withContext(Dispatchers.IO) { runCatching { parse(f.readText()) }.getOrNull() }?.let {
                     val at = LocalDateTime.ofEpochSecond(f.lastModified() / 1000, 0, java.time.ZoneId.systemDefault().rules.getOffset(java.time.Instant.ofEpochMilli(f.lastModified())))
                     flow.value = Res(it, fetchedAt = at, fromCache = true)
                 }
             }
+            if (flow.value.data == null) {
+                withContext(Dispatchers.IO) { seed(key)?.let { raw -> runCatching { parse(raw) }.getOrNull() } }?.let {
+                    flow.value = Res(it, fetchedAt = null, fromCache = true) // da aggiornare appena possibile
+                }
+            }
             val cur = flow.value
-            val fresh = cur.fetchedAt != null && !cur.fromCache &&
-                cur.fetchedAt.isAfter(LocalDateTime.now().minusMinutes(maxAgeMinutes))
+            // l'età conta anche per la copia su disco: dati OSM di ieri non vanno riscaricati a ogni avvio
+            val fresh = cur.fetchedAt != null && cur.fetchedAt.isAfter(LocalDateTime.now().minusMinutes(maxAgeMinutes))
             if (fresh && !force) return@withLock
             flow.value = cur.copy(loading = true)
             try {

@@ -43,7 +43,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Flood
+import androidx.compose.material.icons.filled.Landslide
+import androidx.compose.material.icons.filled.Thermostat
+import androidx.compose.material.icons.filled.Thunderstorm
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Button
@@ -228,10 +233,9 @@ private fun AllertaCard(a: Allerta?, loading: Boolean, onClick: () -> Unit) {
                 // riepilogo a tabella: i rischi in colonna (simbolo una volta sola), i giorni in riga
                 Row(verticalAlignment = Alignment.Bottom) {
                     androidx.compose.foundation.layout.Spacer(Modifier.weight(0.24f))
-                    rischiSimboli.forEach { (simbolo, nome) ->
-                        Column(Modifier.weight(0.152f), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(simbolo, fontSize = 20.sp)
-                            Text(nome, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    rischiSimboli.forEach { (icona, nome) ->
+                        Box(Modifier.weight(0.152f), contentAlignment = Alignment.Center) {
+                            Icon(icona, nome, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
                         }
                     }
                 }
@@ -243,13 +247,13 @@ private fun AllertaCard(a: Allerta?, loading: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** Simbolo e nome breve dei rischi, nell'ordine di [AllertaGiorno.rischi]. */
+/** Simbolo dei rischi (nome solo per l'accessibilità), nell'ordine di [AllertaGiorno.rischi]. */
 private val rischiSimboli = listOf(
-    "🌊" to "Idraulico",
-    "⛰️" to "Frane",
-    "⛈️" to "Temporali",
-    "💨" to "Vento",
-    "🌡️" to "Calore",
+    Icons.Filled.Flood to "Rischio idraulico",
+    Icons.Filled.Landslide to "Rischio idrogeologico",
+    Icons.Filled.Thunderstorm to "Temporali",
+    Icons.Filled.Air to "Vento",
+    Icons.Filled.Thermostat to "Ondate di calore",
 )
 
 @Composable

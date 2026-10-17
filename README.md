@@ -2,7 +2,7 @@
 
 App nativa di [CastelSafe](https://newscastelfrancoveneto-lab.github.io/CastelSafe/) per i cittadini di Castelfranco Veneto: allerte meteo-idro, sensori ARPAV, mappa delle aree di protezione civile, avvisi e chiusure, numeri di emergenza.
 
-**Scarica l'APK:** [ultima release](https://github.com/AndreaDp271/CastelSafe-Android/releases/latest). L'app si aggiorna da sola dalla stessa pagina.
+**Scarica l'APK:** [ultima release](https://github.com/newscastelfrancoveneto-lab/CastelSafe-APK/releases/latest). L'app si aggiorna da sola dalla stessa pagina.
 
 ## Come funziona
 

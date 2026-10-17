@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
  * Aggiornamenti dalle release di GitHub: controllo, download e installazione dell'APK.
  */
 object Updater {
-    private const val API = "https://api.github.com/repos/AndreaDp271/CastelSafe-Android/releases/latest"
+    private const val API = "https://api.github.com/repos/newscastelfrancoveneto-lab/CastelSafe-APK/releases/latest"
 
     /** Esito dell'installazione (null = riuscita o annullata), ascoltato dall'interfaccia se aperta. */
     var onFinished: ((error: String?) -> Unit)? = null
@@ -34,8 +34,8 @@ object Updater {
 
     private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
 
-    private const val REPO = "https://github.com/AndreaDp271/CastelSafe-Android"
-    private const val RAW = "https://raw.githubusercontent.com/AndreaDp271/CastelSafe-Android"
+    private const val REPO = "https://github.com/newscastelfrancoveneto-lab/CastelSafe-APK"
+    private const val RAW = "https://raw.githubusercontent.com/newscastelfrancoveneto-lab/CastelSafe-APK"
 
     /**
      * Ultima release pubblicata su GitHub. L'API ha un limite di 60 richieste l'ora per rete:

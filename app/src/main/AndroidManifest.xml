@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- avvisi di allerta, sensori e chiusure (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- vibrazione dell'allarme sonoro -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- facoltativa, chiesta solo toccando "La mia posizione" sulla mappa -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

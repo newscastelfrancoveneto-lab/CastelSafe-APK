@@ -175,8 +175,10 @@ fun MapScreen(nav: Nav) {
             minZoomLevel = 6.0 // come la PWA: ci si può allontanare per vedere il radar su tutta Italia
             maxZoomLevel = 19.0
             // come lo zoomSnap di Leaflet: dopo il pizzico lo zoom si ferma su un livello intero,
-            // così le tessere sono mostrate alla loro risoluzione e non ingrandite (sgranate)
-            setZoomRounding(true)
+            // così le tessere sono mostrate alla loro risoluzione e non ingrandite (sgranate).
+            // L'arrotondamento di osmdroid zooma sul centro dello schermo e fa "saltare" la mappa:
+            // qui invece resta fermo il punto tra le dita.
+            snapZoomOnPinch(this)
             setDestroyMode(false) // non distruggerla quando esce dallo schermo: viene riusata
             controller.setZoom(MapFocus.lastZoom)
             controller.setCenter(MapFocus.lastCenter ?: GeoPoint(Config.CENTER_LAT, Config.CENTER_LON))
@@ -583,4 +585,28 @@ private fun enableLocation(map: MapView, existing: MyLocationNewOverlay?): MyLoc
     o.runOnFirstFix { map.post { o.myLocation?.let { map.controller.animateTo(it, 16.0, 600L) } } }
     o.myLocation?.let { map.controller.animateTo(it, 16.0, 600L) }
     return o
+}
+
+/** Al termine di un pizzico porta lo zoom al livello intero più vicino, tenendo fermo il punto tra le dita. */
+@android.annotation.SuppressLint("ClickableViewAccessibility")
+private fun snapZoomOnPinch(map: MapView) {
+    var pinching = false
+    var fx = 0f; var fy = 0f
+    map.setOnTouchListener { _, e ->
+        when (e.actionMasked) {
+            android.view.MotionEvent.ACTION_POINTER_DOWN, android.view.MotionEvent.ACTION_MOVE -> if (e.pointerCount >= 2) {
+                pinching = true
+                fx = (e.getX(0) + e.getX(1)) / 2; fy = (e.getY(0) + e.getY(1)) / 2
+            }
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> if (pinching) {
+                pinching = false
+                map.post {
+                    val z = map.zoomLevelDouble
+                    val target = Math.round(z).toDouble().coerceIn(map.minZoomLevel, map.maxZoomLevel)
+                    if (kotlin.math.abs(z - target) > 0.01) map.controller.zoomToFixing(target, fx.toInt(), fy.toInt(), 220L)
+                }
+            }
+        }
+        false // il gesto prosegue normalmente verso la mappa
+    }
 }

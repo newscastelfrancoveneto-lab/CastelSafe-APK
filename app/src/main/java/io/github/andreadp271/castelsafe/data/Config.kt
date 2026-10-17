@@ -4,7 +4,7 @@ package io.github.andreadp271.castelsafe.data
 object Config {
     const val API_BASE = "https://andrea.tail04be23.ts.net"
     const val SITE_URL = "https://newscastelfrancoveneto-lab.github.io/CastelSafe/"
-    const val GITHUB_REPO = "AndreaDp271/CastelSafe-Android"
+    const val GITHUB_REPO = "newscastelfrancoveneto-lab/CastelSafe-APK"
     const val WEATHER_ZONE = "Treviso e pianura orientale"
     const val RADAR_URL = "https://radar.protezionecivile.it/"
 

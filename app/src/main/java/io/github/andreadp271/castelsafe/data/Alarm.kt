@@ -65,8 +65,11 @@ object Alarm {
         vibrator = (if (Build.VERSION.SDK_INT >= 31) app.getSystemService(VibratorManager::class.java).defaultVibrator
         else @Suppress("DEPRECATION") app.getSystemService(Vibrator::class.java))?.also { v ->
             val effect = VibrationEffect.createWaveform(longArrayOf(0, 900, 400, 900, 400), 0)
-            if (Build.VERSION.SDK_INT >= 33) v.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM))
-            else @Suppress("DEPRECATION") v.vibrate(effect, attrs)
+            // la vibrazione è un di più: se il sistema la rifiuta, la sirena suona lo stesso
+            runCatching {
+                if (Build.VERSION.SDK_INT >= 33) v.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM))
+                else @Suppress("DEPRECATION") v.vibrate(effect, attrs)
+            }
         }
         active.value = true
         handler.postDelayed(timeout, seconds * 1000L)
@@ -84,7 +87,7 @@ object Alarm {
         handler.removeCallbacks(timeout)
         player?.runCatching { stop(); release() }
         player = null
-        vibrator?.cancel()
+        vibrator?.runCatching { cancel() }
         vibrator = null
         val r = restoreVolume
         if (r != null && ctx != null) runCatching { ctx.getSystemService(AudioManager::class.java).setStreamVolume(AudioManager.STREAM_ALARM, r, 0) }
