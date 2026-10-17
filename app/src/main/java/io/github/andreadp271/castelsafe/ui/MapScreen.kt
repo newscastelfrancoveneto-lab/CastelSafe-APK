@@ -162,7 +162,7 @@ fun MapScreen(nav: Nav) {
             setMultiTouchControls(true)
             zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
             isTilesScaledToDpi = true
-            minZoomLevel = 9.0
+            minZoomLevel = 6.0 // come la PWA: ci si può allontanare per vedere il radar su tutta Italia
             maxZoomLevel = 19.0
             controller.setZoom(MapFocus.lastZoom)
             controller.setCenter(MapFocus.lastCenter ?: GeoPoint(Config.CENTER_LAT, Config.CENTER_LON))
@@ -263,16 +263,26 @@ fun MapScreen(nav: Nav) {
         map.invalidate()
     }
 
-    // Radar: aggiornamento ogni minuto e animazione
-    LaunchedEffect(radarOn) {
+    // Radar: tessere dell'area inquadrata, aggiornate quando si sposta la mappa e ogni minuto
+    var viewport by remember { mutableStateOf(0) }
+    DisposableEffect(map) {
+        val l = object : org.osmdroid.events.MapListener {
+            override fun onScroll(event: org.osmdroid.events.ScrollEvent?): Boolean { viewport++; return false }
+            override fun onZoom(event: org.osmdroid.events.ZoomEvent?): Boolean { viewport++; return false }
+        }
+        map.addMapListener(l)
+        onDispose { map.removeMapListener(l) }
+    }
+    LaunchedEffect(radarOn, viewport) {
         if (!radarOn) { Radar.clear(); return@LaunchedEffect }
+        delay(400) // attende che lo spostamento finisca
         while (true) {
             val bb = map.boundingBox
-            val xs = Radar.tileX(bb.lonWest).coerceAtLeast(0)..Radar.tileX(bb.lonEast).coerceAtMost((1 shl Radar.Z) - 1)
-            val ys = Radar.tileY(bb.latNorth).coerceAtLeast(0)..Radar.tileY(bb.latSouth).coerceAtMost((1 shl Radar.Z) - 1)
-            val sx = if (xs.count() > 4) (xs.first + xs.last) / 2 - 1..(xs.first + xs.last) / 2 + 2 else xs
-            val sy = if (ys.count() > 4) (ys.first + ys.last) / 2 - 1..(ys.first + ys.last) / 2 + 2 else ys
-            Radar.refresh(sx, sy)
+            val z = Radar.tileZoom(map.zoomLevelDouble)
+            val keys = (Radar.tileX(bb.lonWest, z)..Radar.tileX(bb.lonEast, z)).flatMap { x ->
+                (Radar.tileY(bb.latNorth, z)..Radar.tileY(bb.latSouth, z)).map { y -> Triple(z, x, y) }
+            }.take(30)
+            Radar.refresh(keys) { map.invalidate() }
             map.invalidate()
             delay(60_000)
         }

@@ -81,7 +81,7 @@ private val topLevel = setOf("home", "sensori", "mappa", "avvisi", "altro")
 /** Scheda "naturale" di una schermata aperta da una notifica. */
 private fun tabOf(route: String): String = when {
     route.startsWith("stazione") -> "sensori"
-    route in setOf("notifiche", "info", "aggiornamenti") -> "altro"
+    route in setOf("notifiche", "info", "aggiornamenti", "diagnostica") -> "altro"
     route in topLevel -> route
     else -> "home"
 }
@@ -144,6 +144,7 @@ fun App(pendingRoute: String?, onRouteHandled: () -> Unit) {
             composable("notifiche") { NotificheScreen(nav) }
             composable("info") { InfoScreen(nav) }
             composable("aggiornamenti") { UpdateScreen(nav) }
+            composable("diagnostica") { DiagnosticsScreen(nav) }
         }
     }
 }

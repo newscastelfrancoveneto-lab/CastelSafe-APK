@@ -187,6 +187,14 @@ fun SettingsScreen(nav: Nav) {
                 )
             }
 
+            Group("Assistenza") {
+                Item(
+                    painterResource(R.drawable.ic_set_bug), SetColors.general, "Verifica connessione",
+                    "Controlla server CastelSafe, ARPAV, mappa, radar e notifiche",
+                    trailing = { Chevron() }, onClick = { nav.go("diagnostica") },
+                )
+            }
+
             Group("Dati e privacy") {
                 Item(
                     painterResource(R.drawable.ic_set_cleanup), SetColors.data, "Svuota cache",

@@ -73,13 +73,16 @@ object Radar {
     /** time → (tile → bitmap ricolorata) */
     val tiles = java.util.concurrent.ConcurrentHashMap<Long, Map<Triple<Int, Int, Int>, Bitmap>>()
 
-    fun tileX(lon: Double) = floor((lon + 180) / 360 * (1 shl Z)).toInt()
-    fun tileY(lat: Double): Int {
-        val r = Math.toRadians(lat)
-        return floor((1 - ln(tan(r) + 1 / kotlin.math.cos(r)) / PI) / 2 * (1 shl Z)).toInt()
+    fun tileX(lon: Double, z: Int = Z) = floor((lon + 180) / 360 * (1 shl z)).toInt().coerceIn(0, (1 shl z) - 1)
+    fun tileY(lat: Double, z: Int = Z): Int {
+        val r = Math.toRadians(lat.coerceIn(-85.0, 85.0))
+        return floor((1 - ln(tan(r) + 1 / kotlin.math.cos(r)) / PI) / 2 * (1 shl z)).toInt().coerceIn(0, (1 shl z) - 1)
     }
-    fun lonOf(x: Int) = x.toDouble() / (1 shl Z) * 360 - 180
-    fun latOf(y: Int) = Math.toDegrees(atan(sinh(PI * (1 - 2.0 * y / (1 shl Z)))))
+    fun lonOf(x: Int, z: Int = Z) = x.toDouble() / (1 shl z) * 360 - 180
+    fun latOf(y: Int, z: Int = Z) = Math.toDegrees(atan(sinh(PI * (1 - 2.0 * y / (1 shl z)))))
+
+    /** Zoom delle tessere per lo zoom della mappa: nativo fino a 7, come maxNativeZoom della PWA. */
+    fun tileZoom(mapZoom: Double) = floor(mapZoom).toInt().coerceIn(5, Z)
 
     private fun recolor(bytes: ByteArray): Bitmap? {
         val src = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
@@ -93,33 +96,38 @@ object Radar {
         return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
     }
 
-    /** Aggiorna i fotogrammi per l'area [xs]×[ys] (tessere z7); scarica solo quelle mancanti. */
-    suspend fun refresh(xs: IntRange, ys: IntRange) {
+    /**
+     * Aggiorna i fotogrammi per le tessere [keys] (z, x, y) dell'area inquadrata; scarica solo quelle
+     * mancanti, prima l'ultimo fotogramma (visibile subito) e poi il resto dell'animazione.
+     */
+    suspend fun refresh(keys: List<Triple<Int, Int, Int>>, onFrame: () -> Unit = {}) {
         loading = true
         try {
             val last = Api.radarLast()
             val wanted = (FRAMES - 1 downTo 0).map { last - it * STEP }
-            val sem = Semaphore(6)
-            coroutineScope {
-                wanted.map { t ->
-                    async(Dispatchers.IO) {
-                        val have = tiles[t].orEmpty()
-                        val keys = xs.flatMap { x -> ys.map { y -> Triple(Z, x, y) } }.filter { it !in have }
-                        if (keys.isEmpty()) return@async
-                        val got = keys.map { k -> async { sem.withPermit { k to Api.radarTile(t, k.first, k.second, k.third)?.let(::recolor) } } }.awaitAll()
-                        tiles[t] = have + got.mapNotNull { (k, b) -> b?.let { k to it } }
-                    }
-                }.awaitAll()
-            }
             tiles.keys.filter { it !in wanted }.forEach { tiles.remove(it) }
             val wasLast = frames.isEmpty() || current >= frames.size - 1
             frames = wanted
             if (wasLast) current = wanted.size - 1
+            val sem = Semaphore(8)
+            suspend fun load(t: Long) = coroutineScope {
+                val have = tiles[t].orEmpty()
+                val missing = keys.filter { it !in have }
+                if (missing.isEmpty()) return@coroutineScope
+                val got = missing.map { k -> async(Dispatchers.IO) { sem.withPermit { k to Api.radarTile(t, k.first, k.second, k.third)?.let(::recolor) } } }.awaitAll()
+                tiles[t] = tiles[t].orEmpty() + got.mapNotNull { (k, b) -> b?.let { k to it } }
+            }
+            load(last)
+            onFrame()
+            coroutineScope { wanted.dropLast(1).map { t -> async { load(t) } }.awaitAll() }
+            onFrame()
             error = null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             error = "Radar non disponibile: ${Repo.errorText(e)}"
         } finally {
-            withContext(Dispatchers.Main) { loading = false }
+            loading = false // anche se interrotto da uno spostamento della mappa
         }
     }
 
@@ -137,9 +145,12 @@ class RadarOverlay : Overlay() {
         val set = Radar.tiles[t] ?: return
         paint.alpha = (Radar.opacity * 255).toInt()
         val proj = map.projection
-        for ((k, bmp) in set) {
-            proj.toPixels(GeoPoint(Radar.latOf(k.third), Radar.lonOf(k.second)), p1)
-            proj.toPixels(GeoPoint(Radar.latOf(k.third + 1), Radar.lonOf(k.second + 1)), p2)
+        // solo le tessere dello zoom corrente; finché non arrivano, quelle già scaricate a un altro zoom
+        val z = Radar.tileZoom(map.zoomLevelDouble)
+        val current = set.filterKeys { it.first == z }
+        for ((k, bmp) in current.ifEmpty { set }) {
+            proj.toPixels(GeoPoint(Radar.latOf(k.third, k.first), Radar.lonOf(k.second, k.first)), p1)
+            proj.toPixels(GeoPoint(Radar.latOf(k.third + 1, k.first), Radar.lonOf(k.second + 1, k.first)), p2)
             dst.set(p1.x, p1.y, p2.x, p2.y)
             c.drawBitmap(bmp, null, dst, paint)
         }
