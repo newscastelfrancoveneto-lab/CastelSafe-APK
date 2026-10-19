@@ -84,7 +84,7 @@ object Radar {
     /** Zoom delle tessere per lo zoom della mappa: nativo fino a 7, come maxNativeZoom della PWA. */
     fun tileZoom(mapZoom: Double) = floor(mapZoom).toInt().coerceIn(5, Z)
 
-    private fun recolor(bytes: ByteArray): Bitmap? {
+    internal fun recolor(bytes: ByteArray): Bitmap? {
         val src = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
         val w = src.width; val h = src.height
         val px = IntArray(w * h)

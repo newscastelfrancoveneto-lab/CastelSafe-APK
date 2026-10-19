@@ -7,4 +7,6 @@
     <string name="widget_sensori_desc">Livello di Muson e Avenale, temperatura e pioggia</string>
     <string name="widget_grafico">Grafico sensore</string>
     <string name="widget_grafico_desc">Andamento delle ultime 24 ore di un dato a scelta</string>
+    <string name="widget_radar">Radar Italia</string>
+    <string name="widget_radar_desc">Radar delle precipitazioni su tutta l\'Italia, con Castelfranco Veneto segnata</string>
 </resources>

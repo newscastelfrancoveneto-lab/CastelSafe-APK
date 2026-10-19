@@ -59,7 +59,9 @@ object Widgets {
         // gli ID arrivano dal sistema, per ricevitore: ogni widget resta quello che è
         refresh(ctx, AllertaWidgetReceiver::class.java, AllertaWidget())
         refresh(ctx, SensoriWidgetReceiver::class.java, SensoriWidget())
+        runCatching { RadarRender.renderAll(ctx) }
         refresh(ctx, GraficoWidgetReceiver::class.java, GraficoWidget())
+        refresh(ctx, RadarWidgetReceiver::class.java, RadarWidget())
     }
 
     internal val tick = kotlinx.coroutines.flow.MutableStateFlow(0)

@@ -8,10 +8,11 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Suoni dell'allarme sonoro. I primi due sono sintetizzati dall'app, l'ultimo è la sveglia del telefono. */
+/** Suoni dell'allarme sonoro. I primi tre sono sintetizzati dall'app, l'ultimo è la sveglia del telefono. */
 enum class SuonoAllarme(val label: String, val descrizione: String) {
     SIRENA("Sirena", "Tono che sale e scende, come la sirena di protezione civile"),
     DUE_TONI("Due toni", "Alternato acuto/grave, come i mezzi di soccorso"),
+    BIP("Bip bip", "Due bip secchi e ravvicinati, poi una pausa: il più penetrante"),
     SVEGLIA("Sveglia del telefono", "La suoneria della sveglia scelta in Android"),
 }
 
@@ -26,6 +27,7 @@ object Siren {
         val samples = when (s) {
             SuonoAllarme.SIRENA -> sirena()
             SuonoAllarme.DUE_TONI -> dueToni()
+            SuonoAllarme.BIP -> bip()
             SuonoAllarme.SVEGLIA -> return null
         }
         val tmp = File(f.path + ".tmp")
@@ -62,6 +64,26 @@ object Siren {
             val k = i % half
             val ramp = minOf(1.0, k / 220.0, (half - k) / 220.0)
             (v / 1.53 * 0.95 * ramp * Short.MAX_VALUE).toInt().toShort()
+        }
+    }
+
+    /** Bip bip: due beep a 2,4 kHz da 0,12 s, distanziati di 0,09 s, poi pausa; ciclo di 1,2 s (due cicli). */
+    private fun bip(): ShortArray {
+        val ciclo = (RATE * 1.2).toInt()
+        val durata = (RATE * 0.12).toInt()
+        val stacco = (RATE * 0.09).toInt()
+        var phase = 0.0
+        return ShortArray(ciclo * 2) { i ->
+            val k = i % ciclo
+            val dentro = k % (durata + stacco)
+            val attivo = k < 2 * (durata + stacco) && dentro < durata
+            if (!attivo) { 0 } else {
+                phase += 2 * PI * 2400.0 / RATE
+                val v = sin(phase) + 0.3 * sin(3 * phase)
+                // rampe di 3 ms: niente "click" all'inizio e alla fine di ogni bip
+                val ramp = minOf(1.0, dentro / 130.0, (durata - dentro) / 130.0)
+                (v / 1.3 * 0.95 * ramp * Short.MAX_VALUE).toInt().toShort()
+            }.toShort()
         }
     }
 
