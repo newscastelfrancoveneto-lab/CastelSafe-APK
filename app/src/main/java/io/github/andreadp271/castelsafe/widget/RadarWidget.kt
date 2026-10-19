@@ -111,8 +111,10 @@ object RadarRender {
 
     suspend fun render(ctx: Context, awId: Int) {
         val o = AppWidgetManager.getInstance(ctx).getAppWidgetOptions(awId)
-        val w = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250).coerceAtLeast(1)
-        val h = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 250).coerceAtLeast(1)
+        // le dimensioni dipendono dall'orientamento: in verticale larghezza minima e altezza massima, in orizzontale il contrario
+        val oriz = ctx.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val w = o.getInt(if (oriz) AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH else AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250).coerceAtLeast(1)
+        val h = o.getInt(if (oriz) AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT else AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 250).coerceAtLeast(1)
         val ratio = (w.toFloat() / h).coerceIn(0.5f, 2.4f)
         val bmp = runCatching { disegna(ctx, ratio, RadarPrefs.km(ctx, awId)) }.getOrNull() ?: return
         bitmaps.value = bitmaps.value + (awId to bmp)
