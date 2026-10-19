@@ -83,6 +83,14 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_grafico" />
         </receiver>
+        <activity
+            android:name=".widget.RadarWidgetConfigActivity"
+            android:exported="true"
+            android:label="@string/widget_radar">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
         <receiver
             android:name=".widget.RadarWidgetReceiver"
             android:exported="true"
