@@ -267,9 +267,10 @@ class RadarWidgetReceiver : GlanceAppWidgetReceiver() {
     /** Ridimensionato dall'utente: l'immagine va rifatta con le nuove proporzioni. */
     override fun onAppWidgetOptionsChanged(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int, newOptions: Bundle) {
         super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
-        val pending = goAsync()
+        // goAsync() può restituire null quando il metodo non arriva da un broadcast
+        val pending: android.content.BroadcastReceiver.PendingResult? = goAsync()
         kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-            try { RadarRender.render(context.applicationContext, appWidgetId) } finally { pending.finish() }
+            try { runCatching { RadarRender.render(context.applicationContext, appWidgetId) } } finally { pending?.finish() }
         }
     }
 }
