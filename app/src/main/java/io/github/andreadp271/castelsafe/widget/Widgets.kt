@@ -39,6 +39,7 @@ import androidx.glance.text.TextStyle
 import io.github.andreadp271.castelsafe.MainActivity
 import io.github.andreadp271.castelsafe.R
 import io.github.andreadp271.castelsafe.data.Allerta
+import io.github.andreadp271.castelsafe.data.Lettura
 import io.github.andreadp271.castelsafe.data.Level
 import io.github.andreadp271.castelsafe.data.Notifier
 import io.github.andreadp271.castelsafe.data.Repo
@@ -193,6 +194,7 @@ class SensoriWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         Widgets.load(context)
         val awId = GlanceAppWidgetManager(context).getAppWidgetId(id)
+        WidgetPrefs.righe(context, awId).map { it.sid }.distinct().forEach { runCatching { Repo.loadStazione(it) } }
         provideContent {
             val t = Widgets.tick.collectAsState().value
             val m = Repo.monitor.collectAsState().value.data
@@ -211,11 +213,21 @@ class SensoriWidgetReceiver : GlanceAppWidgetReceiver() {
     }
 }
 
+/** Lettura in tempo reale; se manca (es. il vento), l'ultimo punto dello storico della stazione. */
+private fun lettura(m: Map<String, StatoStazione>?, sid: String, tipo: String): Lettura? {
+    m?.get(sid)?.sensori?.get(tipo)?.let { return it }
+    val serie = Repo.stazione(sid).value.data ?: return null
+    val s = serie.firstOrNull { it.type == tipo } ?: return null
+    val p = s.ultimo ?: return null
+    return Lettura(p.valore, s.unita, p.istante.toLocalTime().toString().take(5))
+}
+
 @Composable
 private fun SensoriContent(ctx: Context, m: Map<String, StatoStazione>?, righe: List<WRiga>) {
-    val livelli = righe.map { (sid, t, _) -> Stations.level(sid, t, m?.get(sid)?.sensori?.get(t)?.valore) }
+    val letture = righe.map { (sid, t, _) -> lettura(m, sid, t) }
+    val livelli = righe.mapIndexed { i, r -> Stations.level(r.sid, r.tipo, letture[i]?.valore) }
     val max = livelli.maxOrNull()?.takeIf { it != Level.NESSUNO } ?: Level.VERDE
-    val ora = righe.firstNotNullOfOrNull { r -> m?.get(r.sid)?.sensori?.get(r.tipo)?.istante }
+    val ora = letture.firstNotNullOfOrNull { it?.istante }
     val livello = if (m == null) Level.NESSUNO else max
     val ink = livello.ink()
     Frame(livello, "sensori", ctx) {
@@ -232,7 +244,7 @@ private fun SensoriContent(ctx: Context, m: Map<String, StatoStazione>?, righe: 
         righe.withIndex().toList().chunked(2).forEach { coppia ->
             Row(GlanceModifier.fillMaxWidth().padding(bottom = 6.dp)) {
                 coppia.forEach { (i, r) ->
-                    val l = m[r.sid]?.sensori?.get(r.tipo)
+                    val l = letture[i]
                     val inNorma = livelli[i].norma() == Level.VERDE
                     val c = if (inNorma) ink.copy(alpha = 0.6f) else ink
                     Column(GlanceModifier.defaultWeight()) {
