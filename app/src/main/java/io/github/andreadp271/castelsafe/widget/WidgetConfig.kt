@@ -48,7 +48,12 @@ object WidgetPrefs {
     fun nome(sid: String, tipo: String): String {
         val st = Stations.byId(sid)?.name ?: sid
         val breve = st.substringBefore(" Veneto")
-        return if (tipo == "LIVIDRO") st else "$breve · ${Stations.label(tipo)}"
+        // la stazione di casa (Castelfranco) non ha bisogno del prefisso
+        return when {
+            tipo == "LIVIDRO" -> st
+            sid == "0102" -> Stations.label(tipo)
+            else -> "$breve · ${Stations.label(tipo)}"
+        }
     }
 
     private fun p(ctx: Context) = ctx.getSharedPreferences("widget_sensori", Context.MODE_PRIVATE)

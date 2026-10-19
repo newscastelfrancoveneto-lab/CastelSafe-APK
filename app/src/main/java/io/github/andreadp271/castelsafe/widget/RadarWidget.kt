@@ -198,7 +198,11 @@ object RadarRender {
             shader = LinearGradient(gx, 0f, gx + gw, 0f, Radar.legendColors().toIntArray(), null, Shader.TileMode.CLAMP)
         })
         c.drawText("forte", gx + gw + 6f * s, ly + lh / 2 + 4.2f * s, tl)
-        pill(c, "© OpenStreetMap · Radar-DPC", vw - 14f * s, ly, s, true, 0xFFB6C0CC.toInt(), 0xB30A0A0A.toInt())
+        // la fonte sta accanto alla legenda se c'è spazio, altrimenti sopra
+        val fonte = "© OpenStreetMap · Radar-DPC"
+        val wf = Paint().apply { textSize = 15f * s; isFakeBoldText = true; letterSpacing = 0.06f }.measureText(fonte) + 24f * s
+        if (vw - 14f * s - wf > 14f * s + lw + 8f * s) pill(c, fonte, vw - 14f * s, ly, s, true, 0xFFB6C0CC.toInt(), 0xB30A0A0A.toInt())
+        else pill(c, "© OSM · Radar-DPC", vw - 14f * s, ly - 36f * s, s, true, 0xFFB6C0CC.toInt(), 0xB30A0A0A.toInt())
         return bmp
     }
 }
