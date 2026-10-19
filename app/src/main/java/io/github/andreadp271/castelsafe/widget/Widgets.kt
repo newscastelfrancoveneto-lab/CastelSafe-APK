@@ -66,6 +66,12 @@ object Widgets {
 
     internal val tick = kotlinx.coroutines.flow.MutableStateFlow(0)
 
+    /** Aggiorna solo il radar, se l'ultimo disegno ha più di [etaMs] millisecondi. */
+    suspend fun updateRadar(ctx: Context, etaMs: Long) {
+        RadarRender.renderAll(ctx, etaMs = etaMs)
+        refresh(ctx, RadarWidgetReceiver::class.java, RadarWidget())
+    }
+
     private suspend fun refresh(ctx: Context, receiver: Class<*>, widget: GlanceAppWidget) {
         val ids = android.appwidget.AppWidgetManager.getInstance(ctx)
             .getAppWidgetIds(android.content.ComponentName(ctx, receiver))

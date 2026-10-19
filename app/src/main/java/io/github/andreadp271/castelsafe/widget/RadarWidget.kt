@@ -51,7 +51,15 @@ import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
+import androidx.glance.action.ActionParameters
+import androidx.glance.appwidget.action.ActionCallback
+import androidx.glance.appwidget.action.actionRunCallback
+import androidx.glance.layout.Alignment as GAlignment
+import androidx.glance.layout.Box as GBox
 import androidx.glance.layout.ContentScale
+import androidx.glance.layout.padding
+import androidx.glance.layout.size
+import io.github.andreadp271.castelsafe.R
 import androidx.glance.layout.fillMaxSize
 import io.github.andreadp271.castelsafe.data.Api
 import io.github.andreadp271.castelsafe.data.Config
@@ -94,11 +102,11 @@ object RadarRender {
     private const val T = 256
     private const val NERO = 0xFF0A0A0A.toInt()
 
-    suspend fun renderAll(ctx: Context, forza: Boolean = false) {
+    suspend fun renderAll(ctx: Context, forza: Boolean = false, etaMs: Long = 10 * 60_000L) {
         val ids = AppWidgetManager.getInstance(ctx).getAppWidgetIds(ComponentName(ctx, RadarWidgetReceiver::class.java))
         val ora = System.currentTimeMillis()
         // il radar cambia ogni 5 minuti: non serve scaricare decine di tessere a ogni controllo
-        ids.filter { forza || ora - (ultimo[it] ?: 0) > 10 * 60_000 || bitmaps.value[it] == null }.forEach { render(ctx, it) }
+        ids.filter { forza || ora - (ultimo[it] ?: 0) > etaMs || bitmaps.value[it] == null }.forEach { render(ctx, it) }
     }
 
     suspend fun render(ctx: Context, awId: Int) {
@@ -183,8 +191,7 @@ object RadarRender {
 
         // etichette: titolo e ora in alto a sinistra, raggio in alto a destra
         val ora = ultimoRadar?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalTime().toString().take(5) }
-        pill(c, "RADAR  " + (ora?.let { "ore $it" } ?: "non disponibile"), 14f * s, 14f * s, s, false, 0xFFFFFFFF.toInt())
-        pill(c, "$km km", vw - 14f * s, 14f * s, s, true, 0xFF38BDF8.toInt())
+        pill(c, "RADAR $km km · " + (ora ?: "non disponibile"), 14f * s, 14f * s, s, false, 0xFFFFFFFF.toInt())
 
         // legenda in basso a sinistra, fonte a destra
         val lh = 30f * s; val ly = vh - 14f * s - lh
@@ -214,15 +221,36 @@ class RadarWidget : GlanceAppWidget() {
         provideContent {
             val bmp = RadarRender.bitmaps.collectAsState().value[awId]
             if (bmp != null) {
-                Image(
-                    ImageProvider(bmp), contentDescription = "Radar delle precipitazioni attorno a Castelfranco Veneto",
-                    modifier = GlanceModifier.fillMaxSize()
-                        .background(androidx.glance.color.ColorProvider(androidx.compose.ui.graphics.Color(0xFF0A0A0A), androidx.compose.ui.graphics.Color(0xFF0A0A0A)))
-                        .cornerRadius(30.dp).clickable(Widgets.open(context, "mappa")),
-                    contentScale = ContentScale.Crop,
-                )
+                GBox(GlanceModifier.fillMaxSize(), contentAlignment = GAlignment.TopEnd) {
+                    Image(
+                        ImageProvider(bmp), contentDescription = "Radar delle precipitazioni attorno a Castelfranco Veneto",
+                        modifier = GlanceModifier.fillMaxSize()
+                            .background(androidx.glance.color.ColorProvider(androidx.compose.ui.graphics.Color(0xFF0A0A0A), androidx.compose.ui.graphics.Color(0xFF0A0A0A)))
+                            .cornerRadius(30.dp).clickable(Widgets.open(context, "mappa")),
+                        contentScale = ContentScale.Crop,
+                    )
+                    // aggiorna il radar adesso, senza aprire l'app
+                    GBox(GlanceModifier.padding(top = 12.dp, end = 12.dp)) {
+                        GBox(
+                            GlanceModifier.size(34.dp).cornerRadius(17.dp)
+                                .background(androidx.glance.color.ColorProvider(androidx.compose.ui.graphics.Color(0xD90A0A0A), androidx.compose.ui.graphics.Color(0xD90A0A0A)))
+                                .clickable(actionRunCallback<RefreshRadarAction>()),
+                            contentAlignment = GAlignment.Center,
+                        ) {
+                            Image(ImageProvider(R.drawable.ic_widget_refresh), "Aggiorna il radar", GlanceModifier.size(20.dp))
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+/** Tocco sul tasto di aggiornamento: scarica subito l'ultimo fotogramma. */
+class RefreshRadarAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        RadarRender.render(context, GlanceAppWidgetManager(context).getAppWidgetId(glanceId))
+        RadarWidget().update(context, glanceId)
     }
 }
 
