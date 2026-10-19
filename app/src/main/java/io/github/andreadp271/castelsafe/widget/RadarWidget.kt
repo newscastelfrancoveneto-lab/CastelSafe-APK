@@ -46,17 +46,18 @@ import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.tan
 
-/** Radar delle precipitazioni su tutta l'Italia (Radar-DPC), disegnato come immagine. */
+/** Radar delle precipitazioni (Radar-DPC) sulla stessa mappa dell'app, centrato su Castelfranco Veneto. */
 object RadarRender {
     val bitmaps = MutableStateFlow<Map<Int, Bitmap>>(emptyMap())
     private val ultimo = mutableMapOf<Int, Long>()
 
-    private const val Z = 6
+    private const val Z = 7
     private const val T = 256
     private const val MONDO = T * (1 shl Z)          // pixel del mondo a questo zoom
-    private const val ALTEZZA = 780                  // pixel di mappa mostrati in altezza: l'Italia intera
-    private const val LON = 12.6
-    private const val LAT = 42.0
+    private const val ALTEZZA = 360                  // pixel di mappa in altezza a zoom 7: circa 300 km, 150 km attorno a noi
+    private const val K = 2f                         // definizione dell'immagine rispetto ai pixel di mappa
+    private val LON = io.github.andreadp271.castelsafe.data.Config.CENTER_LON
+    private val LAT = io.github.andreadp271.castelsafe.data.Config.CENTER_LAT
 
     private fun px(lon: Double) = (lon + 180) / 360 * MONDO
     private fun py(lat: Double): Double {
@@ -107,12 +108,13 @@ object RadarRender {
             }
             Triple(t, b.awaitAll(), r.awaitAll())
         }
-        val bmp = Bitmap.createBitmap(vw, vh, Bitmap.Config.ARGB_8888)
+        val bmp = Bitmap.createBitmap((vw * K).toInt(), (vh * K).toInt(), Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
+        c.scale(K, K)
         c.drawColor(0xFF0A0A0A.toInt())
         val smorzato = Paint(Paint.FILTER_BITMAP_FLAG).apply {
-            colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0.2f) })
-            alpha = 235
+            colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0.55f) })
+            alpha = 255
         }
         fun dst(k: Pair<Int, Int>) = RectF((k.first * T - left).toFloat(), (k.second * T - top).toFloat(), ((k.first + 1) * T - left).toFloat(), ((k.second + 1) * T - top).toFloat())
         base.forEach { (k, bm) -> if (bm != null) c.drawBitmap(bm, null, dst(k), smorzato) }
@@ -121,15 +123,24 @@ object RadarRender {
 
         // Castelfranco Veneto
         val mx = (px(11.9477) - left).toFloat(); val my = (py(45.6949) - top).toFloat()
+        // cerchi a 50 e 100 km per leggere la distanza della pioggia
+        val mPerPx = 156543.03 * cos(Math.toRadians(LAT)) / (1 shl Z)
+        val anello = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = 0xFF0A0A0A.toInt(); strokeWidth = 1.4f; alpha = 150; pathEffect = android.graphics.DashPathEffect(floatArrayOf(6f, 5f), 0f) }
+        val etichetta = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF0A0A0A.toInt(); textSize = 11f; isFakeBoldText = true; textAlign = Paint.Align.CENTER }
+        listOf(50, 100).forEach { km ->
+            val rr = (km * 1000 / mPerPx).toFloat()
+            c.drawCircle(mx, my, rr, anello)
+            c.drawText("$km km", mx, my - rr - 3f, etichetta)
+        }
         c.drawCircle(mx, my, 11f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF0A0A0A.toInt() })
         c.drawCircle(mx, my, 7f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() })
 
         // fascia in alto: titolo e ora del radar
-        val s = vw / 720f
+        val s = vw / 560f
         val fasciaA = 62f * s
         c.drawRect(0f, 0f, vw.toFloat(), fasciaA, Paint().apply { color = 0xE60A0A0A.toInt() })
         val t1 = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); textSize = 26f * s; isFakeBoldText = true; letterSpacing = 0.1f }
-        c.drawText("RADAR PIOGGIA · ITALIA", 24f * s, 40f * s, t1)
+        c.drawText("RADAR PIOGGIA · CASTELFRANCO", 24f * s, 40f * s, t1)
         val ora = ultimoRadar?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalTime().toString().take(5) }
         val t2 = Paint(t1).apply { textAlign = Paint.Align.RIGHT; color = 0xFF38BDF8.toInt() }
         c.drawText(if (ora != null) "ore $ora" else "non disponibile", vw - 24f * s, 40f * s, t2)
@@ -159,7 +170,7 @@ class RadarWidget : GlanceAppWidget() {
             val bmp = RadarRender.bitmaps.collectAsState().value[awId]
             if (bmp != null) {
                 Image(
-                    ImageProvider(bmp), contentDescription = "Radar delle precipitazioni sull'Italia",
+                    ImageProvider(bmp), contentDescription = "Radar delle precipitazioni attorno a Castelfranco Veneto",
                     modifier = GlanceModifier.fillMaxSize().background(androidx.glance.color.ColorProvider(androidx.compose.ui.graphics.Color(0xFF0A0A0A), androidx.compose.ui.graphics.Color(0xFF0A0A0A)))
                         .cornerRadius(30.dp).clickable(Widgets.open(context, "mappa")),
                     contentScale = ContentScale.Crop,
