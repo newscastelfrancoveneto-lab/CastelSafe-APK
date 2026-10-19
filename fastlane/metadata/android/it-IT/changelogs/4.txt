@@ -1,0 +1,5 @@
+- Widget nel nuovo stile "Semaforo": il fondo prende il colore del livello, con pallino per ogni lettura e per ogni rischio
+- Nuovo widget «Grafico sensore»: le ultime 24 ore di un dato a scelta di qualsiasi stazione, con il totale della pioggia
+- Widget «Fiumi e meteo» configurabile: scegli tutti i dati di ogni stazione, uno per uno
+- Correzione: i widget si aggiornano subito dopo la configurazione e non si scambiano più il contenuto
+- Notifiche con banner colorato: il semaforo del bollettino per le allerte, il numero attuale per i sensori
