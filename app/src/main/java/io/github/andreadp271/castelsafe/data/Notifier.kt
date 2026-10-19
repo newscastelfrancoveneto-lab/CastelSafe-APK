@@ -390,15 +390,13 @@ object Notifier {
         }
     }
 
-    /** Rischi non a verde, i più gravi per primi: nome e livello di oggi e di domani. */
+    /** Tutti i rischi del bollettino, i più gravi per primi: nome e livello di oggi e di domani. */
     private fun semaforo(a: Allerta): List<Triple<String, Level, Level>> {
         val oggi = a.oggi?.rischi.orEmpty().toMap()
         val domani = a.domani?.rischi.orEmpty().toMap()
         return (oggi.keys + domani.keys).distinct()
             .map { Triple(it, oggi[it] ?: Level.NESSUNO, domani[it] ?: Level.NESSUNO) }
-            .filter { maxOf(it.second, it.third) > Level.VERDE }
             .sortedByDescending { maxOf(it.second, it.third) }
-            .take(4)
     }
 
     private fun colore(l: Level): Int = when (l) {
@@ -412,6 +410,8 @@ object Notifier {
         android.widget.RemoteViews(ctx.packageName, R.layout.notif_row).apply {
             setTextViewText(R.id.row_name, nome.orEmpty())
             setTextColor(R.id.row_name, ink)
+            // i rischi a verde restano più discreti
+            if (o != null && d != null && maxOf(o, d) <= Level.VERDE) setFloat(R.id.row_name, "setAlpha", 0.55f)
             fun punto(box: Int, ring: Int, inner: Int, l: Level?) {
                 if (l == null) { setViewVisibility(box, android.view.View.INVISIBLE); return }
                 setInt(ring, "setColorFilter", ink)
