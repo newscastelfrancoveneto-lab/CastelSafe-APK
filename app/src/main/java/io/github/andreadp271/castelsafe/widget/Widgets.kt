@@ -111,12 +111,15 @@ private fun Level.bg(): Color = when (this) {
 private fun Level.ink(): Color = if (this == Level.ROSSO) Color.White else nero
 private fun cp(c: Color) = ColorProvider(c, c)
 
+/** Fattore di scala: 1 = il disegno base (250 x 150 dp); cresce e cala col widget. */
+private fun scala(w: Float, h: Float, baseW: Float = 250f, baseH: Float = 150f) = minOf(w / baseW, h / baseH).coerceIn(0.7f, 1.9f)
+
 /** Livello di una lettura: senza soglie (es. la temperatura) vale come "nella norma". */
 private fun Level.norma() = if (this == Level.NESSUNO) Level.VERDE else this
 
 /** Pallino del livello con un bordo del colore del testo, visibile anche sul suo stesso colore. */
 @Composable
-private fun Dot(level: Level, ink: Color, size: Int = 13) {
+private fun Dot(level: Level, ink: Color, size: Float = 13f) {
     Box(GlanceModifier.size(size.dp), contentAlignment = Alignment.Center) {
         Image(ImageProvider(R.drawable.widget_dot), null, GlanceModifier.size(size.dp), colorFilter = ColorFilter.tint(cp(ink)))
         Image(ImageProvider(R.drawable.widget_dot), null, GlanceModifier.size((size * 0.62f).dp), colorFilter = ColorFilter.tint(cp(level.norma().bg())))
@@ -124,16 +127,18 @@ private fun Dot(level: Level, ink: Color, size: Int = 13) {
 }
 
 @Composable
-private fun Frame(level: Level, route: String, ctx: Context, content: @Composable () -> Unit) {
+private fun Frame(level: Level, route: String, ctx: Context, e: Float = 1f, content: @Composable () -> Unit) {
     Column(
-        GlanceModifier.fillMaxSize().background(cp(level.bg())).cornerRadius(30.dp)
-            .padding(horizontal = 16.dp, vertical = 12.dp).clickable(Widgets.open(ctx, route)),
+        GlanceModifier.fillMaxSize().background(cp(level.bg())).cornerRadius((30 * e).coerceIn(18f, 36f).dp)
+            .padding(horizontal = (16 * e).dp, vertical = (12 * e).dp).clickable(Widgets.open(ctx, route)),
     ) { content() }
 }
 
 // ── Allerta ───────────────────────────────────────────────────────────────────
 
 class AllertaWidget : GlanceAppWidget() {
+    override val sizeMode = androidx.glance.appwidget.SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         Widgets.load(context)
         provideContent {
@@ -150,46 +155,50 @@ class AllertaWidgetReceiver : GlanceAppWidgetReceiver() {
 
 @Composable
 private fun AllertaContent(ctx: Context, a: Allerta?) {
+    val dim = androidx.glance.LocalSize.current
+    val e = scala(dim.width.value, dim.height.value)
     val max = a?.maxLevel ?: Level.NESSUNO
     val ink = max.ink()
-    val dim = ink.copy(alpha = 0.6f)
-    Frame(max.let { if (a == null) Level.NESSUNO else it.norma() }, "allerta", ctx) {
+    val tenue = ink.copy(alpha = 0.6f)
+    Frame(max.let { if (a == null) Level.NESSUNO else it.norma() }, "allerta", ctx, e) {
         Text(
             when {
                 a == null -> "Allerta non disponibile"
                 max <= Level.VERDE -> "Nessuna allerta"
                 else -> "Allerta ${max.label.lowercase()}"
             },
-            style = TextStyle(color = cp(ink), fontSize = 20.sp, fontWeight = FontWeight.Bold), maxLines = 1,
+            style = TextStyle(color = cp(ink), fontSize = (20 * e).sp, fontWeight = FontWeight.Bold), maxLines = 2,
         )
         if (a == null) return@Frame
         val oggi = a.oggi?.rischi.orEmpty().toMap()
         val domani = a.domani?.rischi.orEmpty().toMap()
-        // solo i rischi che non sono a verde, i più gravi per primi
+        // solo i rischi che non sono a verde, i più gravi per primi; quanti ne entrano dipende dall'altezza
+        val posto = ((dim.height.value - 24 * e - 30 * e - 16 * e) / (24 * e)).toInt().coerceIn(1, 5)
         val righe = (oggi.keys + domani.keys).distinct()
             .map { r -> Triple(r, oggi[r] ?: Level.NESSUNO, domani[r] ?: Level.NESSUNO) }
             .filter { maxOf(it.second, it.third) > Level.VERDE }
             .sortedByDescending { maxOf(it.second, it.third) }
-            .take(3)
-        Spacer(GlanceModifier.height(4.dp))
+            .take(posto)
+        Spacer(GlanceModifier.height((4 * e).dp))
         if (righe.isEmpty()) {
             Text(
                 "Bollettino ${a.aggiornamento?.data ?: ""} ${a.aggiornamento?.ora?.take(5).orEmpty()}".trim(),
-                style = TextStyle(color = cp(dim), fontSize = 12.sp, fontWeight = FontWeight.Medium), maxLines = 1,
+                style = TextStyle(color = cp(tenue), fontSize = (12 * e).sp, fontWeight = FontWeight.Medium), maxLines = 2,
             )
             return@Frame
         }
+        val col = (if (dim.width.value < 200) 44 else 56) * e
         Row(GlanceModifier.fillMaxWidth()) {
             Spacer(GlanceModifier.defaultWeight())
             listOf("OGGI", "DOMANI").forEach {
-                Text(it, GlanceModifier.width(56.dp), style = TextStyle(color = cp(dim), fontSize = 9.sp, fontWeight = FontWeight.Bold, textAlign = androidx.glance.text.TextAlign.Center))
+                Text(it, GlanceModifier.width(col.dp), style = TextStyle(color = cp(tenue), fontSize = (9 * e).sp, fontWeight = FontWeight.Bold, textAlign = androidx.glance.text.TextAlign.Center), maxLines = 1)
             }
         }
         righe.forEach { (nome, o, d) ->
-            Row(GlanceModifier.fillMaxWidth().padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(nome, GlanceModifier.defaultWeight(), style = TextStyle(color = cp(ink), fontSize = 13.sp, fontWeight = FontWeight.Bold), maxLines = 1)
+            Row(GlanceModifier.fillMaxWidth().padding(vertical = (1 * e).dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(nome, GlanceModifier.defaultWeight(), style = TextStyle(color = cp(ink), fontSize = (13 * e).sp, fontWeight = FontWeight.Bold), maxLines = 1)
                 listOf(o, d).forEach { l ->
-                    Box(GlanceModifier.width(56.dp), contentAlignment = Alignment.Center) { Dot(l, ink, 14) }
+                    Box(GlanceModifier.width(col.dp), contentAlignment = Alignment.Center) { Dot(l, ink, 14f * e) }
                 }
             }
         }
@@ -199,6 +208,8 @@ private fun AllertaContent(ctx: Context, a: Allerta?) {
 // ── Fiumi e meteo ─────────────────────────────────────────────────────────────
 
 class SensoriWidget : GlanceAppWidget() {
+    override val sizeMode = androidx.glance.appwidget.SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         Widgets.load(context)
         val awId = GlanceAppWidgetManager(context).getAppWidgetId(id)
@@ -232,39 +243,44 @@ private fun lettura(m: Map<String, StatoStazione>?, sid: String, tipo: String): 
 
 @Composable
 private fun SensoriContent(ctx: Context, m: Map<String, StatoStazione>?, righe: List<WRiga>) {
+    val dim = androidx.glance.LocalSize.current
     val letture = righe.map { (sid, t, _) -> lettura(m, sid, t) }
     val livelli = righe.mapIndexed { i, r -> Stations.level(r.sid, r.tipo, letture[i]?.valore) }
     val max = livelli.maxOrNull()?.takeIf { it != Level.NESSUNO } ?: Level.VERDE
     val ora = letture.firstNotNullOfOrNull { it?.istante }
     val livello = if (m == null) Level.NESSUNO else max
     val ink = livello.ink()
-    Frame(livello, "sensori", ctx) {
+    // una o due colonne secondo la larghezza; la scala si riduce finché tutte le letture entrano
+    val colonne = if (dim.width.value < 170) 1 else 2
+    val file = (righe.size + colonne - 1) / colonne
+    val eBase = scala(dim.width.value, dim.height.value)
+    val e = minOf(eBase, ((dim.height.value - 24 * eBase - 24 * eBase) / (file.coerceAtLeast(1) * 50f)).coerceAtLeast(0.55f))
+    Frame(livello, "sensori", ctx, e) {
         Text(
             "FIUMI E METEO" + (ora?.let { " · ore $it" } ?: ""),
-            style = TextStyle(color = cp(ink.copy(alpha = 0.7f)), fontSize = 10.sp, fontWeight = FontWeight.Bold), maxLines = 1,
+            style = TextStyle(color = cp(ink.copy(alpha = 0.7f)), fontSize = (10 * e).sp, fontWeight = FontWeight.Bold), maxLines = 1,
         )
-        Spacer(GlanceModifier.height(6.dp))
+        Spacer(GlanceModifier.height((6 * e).dp))
         if (m == null) {
-            Text("Dati non disponibili", style = TextStyle(color = cp(ink), fontSize = 20.sp, fontWeight = FontWeight.Bold))
+            Text("Dati non disponibili", style = TextStyle(color = cp(ink), fontSize = (20 * e).sp, fontWeight = FontWeight.Bold), maxLines = 2)
             return@Frame
         }
-        val grande = righe.size <= 4
-        righe.withIndex().toList().chunked(2).forEach { coppia ->
-            Row(GlanceModifier.fillMaxWidth().padding(bottom = 6.dp)) {
-                coppia.forEach { (i, r) ->
+        righe.withIndex().toList().chunked(colonne).forEach { gruppo ->
+            Row(GlanceModifier.fillMaxWidth().padding(bottom = (6 * e).dp)) {
+                gruppo.forEach { (i, r) ->
                     val l = letture[i]
                     val inNorma = livelli[i].norma() == Level.VERDE
                     val c = if (inNorma) ink.copy(alpha = 0.6f) else ink
                     Column(GlanceModifier.defaultWeight()) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Dot(livelli[i], ink, 11)
-                            Spacer(GlanceModifier.width(5.dp))
-                            Text(r.nome.uppercase(), style = TextStyle(color = cp(c), fontSize = 9.sp, fontWeight = FontWeight.Bold), maxLines = 1)
+                            Dot(livelli[i], ink, 11f * e)
+                            Spacer(GlanceModifier.width((5 * e).dp))
+                            Text(r.nome.uppercase(), style = TextStyle(color = cp(c), fontSize = (9 * e).sp, fontWeight = FontWeight.Bold), maxLines = 1)
                         }
-                        Text(fmtValue(l?.valore, l?.unita.orEmpty()), style = TextStyle(color = cp(c), fontSize = if (grande) 20.sp else 16.sp, fontWeight = FontWeight.Bold), maxLines = 1)
+                        Text(fmtValue(l?.valore, l?.unita.orEmpty()), style = TextStyle(color = cp(c), fontSize = (20 * e).sp, fontWeight = FontWeight.Bold), maxLines = 1)
                     }
                 }
-                if (coppia.size == 1) Spacer(GlanceModifier.defaultWeight())
+                if (gruppo.size < colonne) repeat(colonne - gruppo.size) { Spacer(GlanceModifier.defaultWeight()) }
             }
         }
     }

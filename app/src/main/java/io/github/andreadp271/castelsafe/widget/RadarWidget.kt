@@ -113,7 +113,7 @@ object RadarRender {
         val o = AppWidgetManager.getInstance(ctx).getAppWidgetOptions(awId)
         val w = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250).coerceAtLeast(1)
         val h = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 250).coerceAtLeast(1)
-        val ratio = (w.toFloat() / h).coerceIn(0.75f, 1.7f)
+        val ratio = (w.toFloat() / h).coerceIn(0.5f, 2.4f)
         val bmp = runCatching { disegna(ctx, ratio, RadarPrefs.km(ctx, awId)) }.getOrNull() ?: return
         bitmaps.value = bitmaps.value + (awId to bmp)
         ultimo[awId] = System.currentTimeMillis()
@@ -260,6 +260,15 @@ class RadarWidgetReceiver : GlanceAppWidgetReceiver() {
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
         super.onDeleted(context, appWidgetIds)
         RadarPrefs.elimina(context, appWidgetIds)
+    }
+
+    /** Ridimensionato dall'utente: l'immagine va rifatta con le nuove proporzioni. */
+    override fun onAppWidgetOptionsChanged(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int, newOptions: Bundle) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        val pending = goAsync()
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            try { RadarRender.render(context.applicationContext, appWidgetId) } finally { pending.finish() }
+        }
     }
 }
 

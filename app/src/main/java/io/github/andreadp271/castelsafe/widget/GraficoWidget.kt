@@ -94,7 +94,7 @@ class GraficoWidget : GlanceAppWidget() {
             val etichetta = scheda?.label ?: Stations.label(t2)
             val titulo = "$stazione · $etichetta"
             val dim = androidx.glance.LocalSize.current
-            val ratio = (dim.width.value / dim.height.value.coerceAtLeast(1f)).coerceIn(1.0f, 3.2f)
+            val ratio = (dim.width.value / dim.height.value.coerceAtLeast(1f)).coerceIn(0.5f, 3.6f)
             val bmp = remember(scheda, titulo, ratio) { disegna(scheda, s2, stazione, etichetta, ratio) }
             Image(
                 ImageProvider(bmp), contentDescription = titulo,
