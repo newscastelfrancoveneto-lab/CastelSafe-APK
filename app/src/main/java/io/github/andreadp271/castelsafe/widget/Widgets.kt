@@ -3,6 +3,8 @@ package io.github.andreadp271.castelsafe.widget
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -13,11 +15,11 @@ import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
-import androidx.glance.appwidget.updateAll
 import androidx.glance.background
 import androidx.glance.color.ColorProvider
 import androidx.glance.layout.Alignment
@@ -25,7 +27,6 @@ import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
-import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
@@ -51,8 +52,22 @@ import kotlinx.coroutines.launch
 object Widgets {
     /** Aggiorna i dati (se scaduti) e ridisegna tutti i widget. */
     suspend fun updateAll(ctx: Context) {
-        AllertaWidget().updateAll(ctx)
-        SensoriWidget().updateAll(ctx)
+        // una sessione già aperta non rilancia provideGlance: la ridisegno con questo segnale
+        load(ctx)
+        tick.value++
+        // gli ID arrivano dal sistema, per ricevitore: ogni widget resta quello che è
+        refresh(ctx, AllertaWidgetReceiver::class.java, AllertaWidget())
+        refresh(ctx, SensoriWidgetReceiver::class.java, SensoriWidget())
+        refresh(ctx, GraficoWidgetReceiver::class.java, GraficoWidget())
+    }
+
+    internal val tick = kotlinx.coroutines.flow.MutableStateFlow(0)
+
+    private suspend fun refresh(ctx: Context, receiver: Class<*>, widget: GlanceAppWidget) {
+        val ids = android.appwidget.AppWidgetManager.getInstance(ctx)
+            .getAppWidgetIds(android.content.ComponentName(ctx, receiver))
+        val gm = androidx.glance.appwidget.GlanceAppWidgetManager(ctx)
+        ids.forEach { runCatching { widget.update(ctx, gm.getGlanceIdBy(it)) } }
     }
 
     internal suspend fun load(ctx: Context) {
@@ -72,39 +87,39 @@ object Widgets {
     )
 }
 
-// ── colori (chiaro / scuro) ───────────────────────────────────────────────────
+// ── stile "Semaforo": il fondo è il colore del livello, testo nero (bianco sul rosso) ──
 
-private val bg = ColorProvider(Color(0xFFFFF8F7), Color(0xFF1F1A1A))
-private val fg = ColorProvider(Color(0xFF231919), Color(0xFFF1DEDD))
-private val muted = ColorProvider(Color(0xFF6B5B5B), Color(0xFFBFAAAA))
+private val nero = Color(0xFF0A0A0A)
 
-private fun Level.argb(): Color = when (this) {
-    Level.VERDE -> Color(0xFF16A34A)
-    Level.GIALLO -> Color(0xFFEAB308)
-    Level.ARANCIONE -> Color(0xFFF97316)
+private fun Level.bg(): Color = when (this) {
+    Level.VERDE -> Color(0xFF22C55E)
+    Level.GIALLO -> Color(0xFFFACC15)
+    Level.ARANCIONE -> Color(0xFFFB923C)
     Level.ROSSO -> Color(0xFFDC2626)
     Level.NESSUNO -> Color(0xFF94A3B8)
 }
 
+private fun Level.ink(): Color = if (this == Level.ROSSO) Color.White else nero
+private fun cp(c: Color) = ColorProvider(c, c)
+
+/** Livello di una lettura: senza soglie (es. la temperatura) vale come "nella norma". */
+private fun Level.norma() = if (this == Level.NESSUNO) Level.VERDE else this
+
+/** Pallino del livello con un bordo del colore del testo, visibile anche sul suo stesso colore. */
 @Composable
-private fun Dot(level: Level, size: Int = 14) {
-    Image(
-        ImageProvider(R.drawable.widget_dot), contentDescription = level.label.ifBlank { null },
-        modifier = GlanceModifier.size(size.dp),
-        colorFilter = ColorFilter.tint(ColorProvider(level.argb(), level.argb())),
-    )
+private fun Dot(level: Level, ink: Color, size: Int = 13) {
+    Box(GlanceModifier.size(size.dp), contentAlignment = Alignment.Center) {
+        Image(ImageProvider(R.drawable.widget_dot), null, GlanceModifier.size(size.dp), colorFilter = ColorFilter.tint(cp(ink)))
+        Image(ImageProvider(R.drawable.widget_dot), null, GlanceModifier.size((size * 0.62f).dp), colorFilter = ColorFilter.tint(cp(level.norma().bg())))
+    }
 }
 
-/** Cornice comune: sfondo arrotondato e barra laterale del colore del livello. */
 @Composable
 private fun Frame(level: Level, route: String, ctx: Context, content: @Composable () -> Unit) {
-    Row(
-        GlanceModifier.fillMaxSize().background(bg).cornerRadius(18.dp).clickable(Widgets.open(ctx, route)),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(GlanceModifier.width(6.dp).fillMaxHeight().background(ColorProvider(level.argb(), level.argb()))) {}
-        Column(GlanceModifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp)) { content() }
-    }
+    Column(
+        GlanceModifier.fillMaxSize().background(cp(level.bg())).cornerRadius(30.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp).clickable(Widgets.open(ctx, route)),
+    ) { content() }
 }
 
 // ── Allerta ───────────────────────────────────────────────────────────────────
@@ -112,8 +127,11 @@ private fun Frame(level: Level, route: String, ctx: Context, content: @Composabl
 class AllertaWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         Widgets.load(context)
-        val a = Repo.allerta.value.data
-        provideContent { AllertaContent(context, a) }
+        provideContent {
+            Widgets.tick.collectAsState().value
+            val a = Repo.allerta.collectAsState().value.data
+            AllertaContent(context, a)
+        }
     }
 }
 
@@ -124,31 +142,47 @@ class AllertaWidgetReceiver : GlanceAppWidgetReceiver() {
 @Composable
 private fun AllertaContent(ctx: Context, a: Allerta?) {
     val max = a?.maxLevel ?: Level.NESSUNO
-    Frame(max, "allerta", ctx) {
+    val ink = max.ink()
+    val dim = ink.copy(alpha = 0.6f)
+    Frame(max.let { if (a == null) Level.NESSUNO else it.norma() }, "allerta", ctx) {
         Text(
             when {
                 a == null -> "Allerta non disponibile"
-                max == Level.VERDE -> "Nessuna allerta"
+                max <= Level.VERDE -> "Nessuna allerta"
                 else -> "Allerta ${max.label.lowercase()}"
             },
-            style = TextStyle(color = fg, fontSize = 16.sp, fontWeight = FontWeight.Bold), maxLines = 1,
+            style = TextStyle(color = cp(ink), fontSize = 20.sp, fontWeight = FontWeight.Bold), maxLines = 1,
         )
-        Spacer(GlanceModifier.height(6.dp))
-        if (a != null) {
-            listOf("Oggi" to a.oggi, "Domani" to a.domani).forEach { (label, g) ->
-                Row(GlanceModifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(label, GlanceModifier.width(58.dp), style = TextStyle(color = fg, fontSize = 13.sp, fontWeight = FontWeight.Medium))
-                    (g?.rischi ?: emptyList()).forEach { (_, l) ->
-                        Dot(l)
-                        Spacer(GlanceModifier.width(6.dp))
-                    }
-                }
-            }
-            Spacer(GlanceModifier.height(4.dp))
+        if (a == null) return@Frame
+        val oggi = a.oggi?.rischi.orEmpty().toMap()
+        val domani = a.domani?.rischi.orEmpty().toMap()
+        // solo i rischi che non sono a verde, i più gravi per primi
+        val righe = (oggi.keys + domani.keys).distinct()
+            .map { r -> Triple(r, oggi[r] ?: Level.NESSUNO, domani[r] ?: Level.NESSUNO) }
+            .filter { maxOf(it.second, it.third) > Level.VERDE }
+            .sortedByDescending { maxOf(it.second, it.third) }
+            .take(3)
+        Spacer(GlanceModifier.height(4.dp))
+        if (righe.isEmpty()) {
             Text(
                 "Bollettino ${a.aggiornamento?.data ?: ""} ${a.aggiornamento?.ora?.take(5).orEmpty()}".trim(),
-                style = TextStyle(color = muted, fontSize = 11.sp), maxLines = 1,
+                style = TextStyle(color = cp(dim), fontSize = 12.sp, fontWeight = FontWeight.Medium), maxLines = 1,
             )
+            return@Frame
+        }
+        Row(GlanceModifier.fillMaxWidth()) {
+            Spacer(GlanceModifier.defaultWeight())
+            listOf("OGGI", "DOMANI").forEach {
+                Text(it, GlanceModifier.width(56.dp), style = TextStyle(color = cp(dim), fontSize = 9.sp, fontWeight = FontWeight.Bold, textAlign = androidx.glance.text.TextAlign.Center))
+            }
+        }
+        righe.forEach { (nome, o, d) ->
+            Row(GlanceModifier.fillMaxWidth().padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(nome, GlanceModifier.defaultWeight(), style = TextStyle(color = cp(ink), fontSize = 13.sp, fontWeight = FontWeight.Bold), maxLines = 1)
+                listOf(o, d).forEach { l ->
+                    Box(GlanceModifier.width(56.dp), contentAlignment = Alignment.Center) { Dot(l, ink, 14) }
+                }
+            }
         }
     }
 }
@@ -158,42 +192,59 @@ private fun AllertaContent(ctx: Context, a: Allerta?) {
 class SensoriWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         Widgets.load(context)
-        val m = Repo.monitor.value.data
-        provideContent { SensoriContent(context, m) }
+        val awId = GlanceAppWidgetManager(context).getAppWidgetId(id)
+        provideContent {
+            val t = Widgets.tick.collectAsState().value
+            val m = Repo.monitor.collectAsState().value.data
+            val righe = remember(t) { WidgetPrefs.righe(context, awId) }
+            SensoriContent(context, m, righe)
+        }
     }
 }
 
 class SensoriWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = SensoriWidget()
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        WidgetPrefs.elimina(context, appWidgetIds)
+    }
 }
 
-/** Righe mostrate: livello dei due fiumi, temperatura e pioggia delle ultime 24 ore. */
-private val righe = listOf(
-    Triple("0292", "LIVIDRO", "Muson dei Sassi"),
-    Triple("0653", "LIVIDRO", "Avenale"),
-    Triple("0102", "TEMP", "Temperatura"),
-    Triple("0102", "PRECCUM24", "Pioggia 24 ore"),
-)
-
 @Composable
-private fun SensoriContent(ctx: Context, m: Map<String, StatoStazione>?) {
+private fun SensoriContent(ctx: Context, m: Map<String, StatoStazione>?, righe: List<WRiga>) {
     val livelli = righe.map { (sid, t, _) -> Stations.level(sid, t, m?.get(sid)?.sensori?.get(t)?.valore) }
     val max = livelli.maxOrNull()?.takeIf { it != Level.NESSUNO } ?: Level.VERDE
-    val ora = m?.get("0292")?.sensori?.get("LIVIDRO")?.istante
-    Frame(if (m == null) Level.NESSUNO else max, "sensori", ctx) {
-        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Sensori ARPAV", GlanceModifier.defaultWeight(), style = TextStyle(color = fg, fontSize = 14.sp, fontWeight = FontWeight.Bold), maxLines = 1)
-            ora?.let { Text("ore $it", style = TextStyle(color = muted, fontSize = 11.sp)) }
+    val ora = righe.firstNotNullOfOrNull { r -> m?.get(r.sid)?.sensori?.get(r.tipo)?.istante }
+    val livello = if (m == null) Level.NESSUNO else max
+    val ink = livello.ink()
+    Frame(livello, "sensori", ctx) {
+        Text(
+            "FIUMI E METEO" + (ora?.let { " · ore $it" } ?: ""),
+            style = TextStyle(color = cp(ink.copy(alpha = 0.7f)), fontSize = 10.sp, fontWeight = FontWeight.Bold), maxLines = 1,
+        )
+        Spacer(GlanceModifier.height(6.dp))
+        if (m == null) {
+            Text("Dati non disponibili", style = TextStyle(color = cp(ink), fontSize = 20.sp, fontWeight = FontWeight.Bold))
+            return@Frame
         }
-        Spacer(GlanceModifier.height(4.dp))
-        if (m == null) Text("Dati non disponibili", style = TextStyle(color = muted, fontSize = 12.sp))
-        else righe.forEachIndexed { i, (sid, t, nome) ->
-            val l = m[sid]?.sensori?.get(t)
-            Row(GlanceModifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(nome, GlanceModifier.defaultWeight(), style = TextStyle(color = fg, fontSize = 13.sp), maxLines = 1)
-                Text(fmtValue(l?.valore, l?.unita.orEmpty()), style = TextStyle(color = fg, fontSize = 13.sp, fontWeight = FontWeight.Bold), maxLines = 1)
-                Spacer(GlanceModifier.width(6.dp))
-                Dot(livelli[i], 10)
+        val grande = righe.size <= 4
+        righe.withIndex().toList().chunked(2).forEach { coppia ->
+            Row(GlanceModifier.fillMaxWidth().padding(bottom = 6.dp)) {
+                coppia.forEach { (i, r) ->
+                    val l = m[r.sid]?.sensori?.get(r.tipo)
+                    val inNorma = livelli[i].norma() == Level.VERDE
+                    val c = if (inNorma) ink.copy(alpha = 0.6f) else ink
+                    Column(GlanceModifier.defaultWeight()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Dot(livelli[i], ink, 11)
+                            Spacer(GlanceModifier.width(5.dp))
+                            Text(r.nome.uppercase(), style = TextStyle(color = cp(c), fontSize = 9.sp, fontWeight = FontWeight.Bold), maxLines = 1)
+                        }
+                        Text(fmtValue(l?.valore, l?.unita.orEmpty()), style = TextStyle(color = cp(c), fontSize = if (grande) 20.sp else 16.sp, fontWeight = FontWeight.Bold), maxLines = 1)
+                    }
+                }
+                if (coppia.size == 1) Spacer(GlanceModifier.defaultWeight())
             }
         }
     }

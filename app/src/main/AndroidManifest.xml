@@ -56,6 +56,33 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_allerta" />
         </receiver>
+        <activity
+            android:name=".widget.SensoriWidgetConfigActivity"
+            android:exported="true"
+            android:label="@string/widget_sensori">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".widget.GraficoWidgetConfigActivity"
+            android:exported="true"
+            android:label="@string/widget_grafico">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+        <receiver
+            android:name=".widget.GraficoWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_grafico">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_grafico" />
+        </receiver>
         <receiver
             android:name=".widget.SensoriWidgetReceiver"
             android:exported="true"

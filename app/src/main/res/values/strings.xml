@@ -5,4 +5,6 @@
     <string name="widget_allerta_desc">Livello di allerta di oggi e domani</string>
     <string name="widget_sensori">Fiumi e meteo</string>
     <string name="widget_sensori_desc">Livello di Muson e Avenale, temperatura e pioggia</string>
+    <string name="widget_grafico">Grafico sensore</string>
+    <string name="widget_grafico_desc">Andamento delle ultime 24 ore di un dato a scelta</string>
 </resources>

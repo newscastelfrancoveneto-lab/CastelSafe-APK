@@ -3,7 +3,7 @@
     android:description="@string/widget_allerta_desc"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:minWidth="180dp"
-    android:minHeight="100dp"
+    android:minHeight="110dp"
     android:minResizeWidth="160dp"
     android:minResizeHeight="90dp"
     android:targetCellWidth="3"
