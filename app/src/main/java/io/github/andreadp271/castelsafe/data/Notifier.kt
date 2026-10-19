@@ -1,5 +1,6 @@
 package io.github.andreadp271.castelsafe.data
 
+import kotlinx.coroutines.launch
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -487,7 +488,17 @@ object Notifier {
             title = "Prova: ${v.titolo}",
             body = v.etichetta(l),
         )
-        show(ctx, item, Classificata(v.categoria, if (l == Level.VERDE) Level.VERDE else l, l == Level.VERDE), s, m)
+        val c = Classificata(v.categoria, if (l == Level.VERDE) Level.VERDE else l, l == Level.VERDE, v.stazione, v.sensore)
+        // la prova mostra i dati veri di adesso: se non sono ancora in memoria li scarica prima
+        Repo.init(ctx)
+        val mostra = { show(ctx, item, c, s, m) }
+        if (Repo.monitor.value.data == null || Repo.allerta.value.data == null) {
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                runCatching { Repo.loadMonitor() }
+                runCatching { Repo.loadAllerta() }
+                mostra()
+            }
+        } else mostra()
         if (m == Modo.ALLARME) Alarm.start(ctx, 5)
     }
 }
