@@ -255,7 +255,14 @@ class RadarWidgetConfigActivity : ComponentActivity() {
                             Row(Modifier.fillMaxWidth().clickable { km = o }, verticalAlignment = Alignment.CenterVertically) {
                                 RadioButton(km == o, onClick = { km = o })
                                 Text(
-                                    "$o km" + when (o) { 10 -> " · il quartiere"; 25 -> " · la zona"; 50 -> " · la provincia"; 100 -> " · il Veneto centrale"; 150 -> " · il Nord-Est"; else -> " · il Nord Italia" },
+                                    "$o km" + when (o) {
+                                        10 -> " · Castelfranco e i paesi vicini"
+                                        25 -> " · fino a Bassano e Treviso"
+                                        50 -> " · fino a Padova, Vicenza e Venezia"
+                                        100 -> " · da Belluno a Rovigo, fino a Udine"
+                                        150 -> " · Trento, Trieste e Bologna"
+                                        else -> " · da Milano a Firenze"
+                                    },
                                 )
                             }
                         }
