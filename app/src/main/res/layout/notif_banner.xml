@@ -31,6 +31,16 @@
             android:letterSpacing="0.12" />
 
         <TextView
+            android:id="@+id/banner_value"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:textSize="34sp"
+            android:textStyle="bold"
+            android:letterSpacing="-0.03"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/banner_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -39,6 +49,14 @@
             android:textSize="19sp"
             android:textStyle="bold"
             android:letterSpacing="-0.02" />
+
+        <LinearLayout
+            android:id="@+id/banner_table"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="vertical"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/banner_body"

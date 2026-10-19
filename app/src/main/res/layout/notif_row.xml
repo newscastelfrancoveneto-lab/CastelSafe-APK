@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingTop="2dp"
+    android:paddingBottom="2dp">
+
+    <TextView
+        android:id="@+id/row_name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:maxLines="1"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/row_h1"
+        android:layout_width="56dp"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textSize="9sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.1"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/row_d1"
+        android:layout_width="56dp"
+        android:layout_height="16dp">
+        <FrameLayout
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_gravity="center">
+            <ImageView android:id="@+id/row_d1_ring" android:layout_width="16dp" android:layout_height="16dp"
+                android:importantForAccessibility="no" android:src="@drawable/banner_dot" />
+            <ImageView android:id="@+id/row_d1_in" android:layout_width="10dp" android:layout_height="10dp"
+                android:layout_gravity="center" android:importantForAccessibility="no" android:src="@drawable/banner_dot" />
+        </FrameLayout>
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/row_h2"
+        android:layout_width="56dp"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textSize="9sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.1"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/row_d2"
+        android:layout_width="56dp"
+        android:layout_height="16dp">
+        <FrameLayout
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_gravity="center">
+            <ImageView android:id="@+id/row_d2_ring" android:layout_width="16dp" android:layout_height="16dp"
+                android:importantForAccessibility="no" android:src="@drawable/banner_dot" />
+            <ImageView android:id="@+id/row_d2_in" android:layout_width="10dp" android:layout_height="10dp"
+                android:layout_gravity="center" android:importantForAccessibility="no" android:src="@drawable/banner_dot" />
+        </FrameLayout>
+    </FrameLayout>
+</LinearLayout>

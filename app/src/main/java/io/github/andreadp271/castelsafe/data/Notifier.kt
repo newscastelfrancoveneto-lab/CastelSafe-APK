@@ -309,6 +309,12 @@ object Notifier {
         }
         if (res.ultimoId < s.lastId) s.lastId = res.ultimoId  // registro del server azzerato
         var allarme = false
+        // il banner mostra il numero attuale dei sensori e il semaforo delle allerte
+        if (res.notifiche.isNotEmpty()) {
+            Repo.init(ctx)
+            runCatching { Repo.loadMonitor(true) }
+            runCatching { Repo.loadAllerta(true) }
+        }
         val ricevute = res.notifiche.sortedBy { it.id }.map { item ->
             val c = Classifier.classify(item)
             val modo = s.modoPer(c)
@@ -339,7 +345,7 @@ object Notifier {
     }
 
     /** Banner nello stile dei widget: fondo del colore del livello, testo nero (bianco su rosso e grafite). */
-    private fun banner(ctx: Context, item: FeedItem, c: Classificata, righe: Int): android.widget.RemoteViews {
+    private fun banner(ctx: Context, item: FeedItem, c: Classificata, esteso: Boolean): android.widget.RemoteViews {
         val (fondo, testo) = when {
             c.rientro -> 0xFF22C55E.toInt() to 0xFF0A0A0A.toInt()
             c.livello == Level.ROSSO -> 0xFFDC2626.toInt() to 0xFFFFFFFF.toInt()
@@ -348,10 +354,12 @@ object Notifier {
             c.categoria == Categoria.COMUNICAZIONI || c.livello == Level.NESSUNO -> 0xFF1F1A1A.toInt() to 0xFFFFFFFF.toInt()
             else -> 0xFF22C55E.toInt() to 0xFF0A0A0A.toInt()
         }
+        val sensore = if (c.categoria == Categoria.SENSORI && c.stazione != null && c.sensore != null) c else null
+        val lettura = sensore?.let { Repo.monitor.value.data?.get(it.stazione!!)?.sensori?.get(it.sensore!!) }
         val etichetta = when {
+            sensore != null -> "${Stations.byId(sensore.stazione!!)?.name ?: sensore.stazione} · ${Stations.label(sensore.sensore!!)}"
             c.rientro -> "${c.categoria.titolo} · rientro"
-            c.categoria == Categoria.COMUNICAZIONI -> c.categoria.titolo
-            c.livello == Level.NESSUNO -> c.categoria.titolo
+            c.categoria == Categoria.COMUNICAZIONI || c.livello == Level.NESSUNO -> c.categoria.titolo
             else -> "${c.categoria.titolo} · ${c.livello.label}"
         }
         return android.widget.RemoteViews(ctx.packageName, R.layout.notif_banner).apply {
@@ -359,10 +367,66 @@ object Notifier {
             setTextViewText(R.id.banner_tag, etichetta)
             setTextViewText(R.id.banner_title, item.title)
             setTextViewText(R.id.banner_body, item.body)
-            setInt(R.id.banner_body, "setMaxLines", righe)
+            // sensori: il numero attuale è il protagonista; il titolo compare nel banner espanso
+            if (lettura?.valore != null) {
+                setViewVisibility(R.id.banner_value, android.view.View.VISIBLE)
+                setTextViewText(R.id.banner_value, io.github.andreadp271.castelsafe.ui.fmtValue(lettura.valore, lettura.unita))
+                setTextColor(R.id.banner_value, testo)
+                if (!esteso) setViewVisibility(R.id.banner_title, android.view.View.GONE)
+            }
+            // allerte: il semaforo dei rischi attivi
+            val a = if (c.categoria == Categoria.ALLERTA) Repo.allerta.value.data else null
+            val righe = a?.let { semaforo(it) }.orEmpty()
+            if (esteso && righe.isNotEmpty()) {
+                setViewVisibility(R.id.banner_table, android.view.View.VISIBLE)
+                removeAllViews(R.id.banner_table)
+                addView(R.id.banner_table, riga(ctx, null, null, null, testo, intestazione = true))
+                righe.forEach { (nome, o, d) -> addView(R.id.banner_table, riga(ctx, nome, o, d, testo)) }
+            }
+            if (!esteso) setViewVisibility(R.id.banner_body, android.view.View.GONE)
+            else setInt(R.id.banner_body, "setMaxLines", 8)
             listOf(R.id.banner_tag, R.id.banner_title, R.id.banner_body).forEach { setTextColor(it, testo) }
         }
     }
+
+    /** Rischi non a verde, i più gravi per primi: nome e livello di oggi e di domani. */
+    private fun semaforo(a: Allerta): List<Triple<String, Level, Level>> {
+        val oggi = a.oggi?.rischi.orEmpty().toMap()
+        val domani = a.domani?.rischi.orEmpty().toMap()
+        return (oggi.keys + domani.keys).distinct()
+            .map { Triple(it, oggi[it] ?: Level.NESSUNO, domani[it] ?: Level.NESSUNO) }
+            .filter { maxOf(it.second, it.third) > Level.VERDE }
+            .sortedByDescending { maxOf(it.second, it.third) }
+            .take(4)
+    }
+
+    private fun colore(l: Level): Int = when (l) {
+        Level.ROSSO -> 0xFFDC2626.toInt()
+        Level.ARANCIONE -> 0xFFFB923C.toInt()
+        Level.GIALLO -> 0xFFFACC15.toInt()
+        else -> 0xFF22C55E.toInt()
+    }
+
+    private fun riga(ctx: Context, nome: String?, o: Level?, d: Level?, ink: Int, intestazione: Boolean = false): android.widget.RemoteViews =
+        android.widget.RemoteViews(ctx.packageName, R.layout.notif_row).apply {
+            setTextViewText(R.id.row_name, nome.orEmpty())
+            setTextColor(R.id.row_name, ink)
+            fun punto(box: Int, ring: Int, inner: Int, l: Level?) {
+                if (l == null) { setViewVisibility(box, android.view.View.INVISIBLE); return }
+                setInt(ring, "setColorFilter", ink)
+                setInt(inner, "setColorFilter", colore(l))
+            }
+            if (intestazione) {
+                listOf(R.id.row_h1 to "OGGI", R.id.row_h2 to "DOMANI").forEach { (id, t) ->
+                    setViewVisibility(id, android.view.View.VISIBLE); setTextViewText(id, t); setTextColor(id, ink)
+                }
+                setViewVisibility(R.id.row_d1, android.view.View.GONE)
+                setViewVisibility(R.id.row_d2, android.view.View.GONE)
+            } else {
+                punto(R.id.row_d1, R.id.row_d1_ring, R.id.row_d1_in, o)
+                punto(R.id.row_d2, R.id.row_d2_ring, R.id.row_d2_in, d)
+            }
+        }
 
     fun show(ctx: Context, item: FeedItem, c: Classificata, s: NotifySettings, modo: Modo) {
         if (!canNotify(ctx) || modo == Modo.NO) return
@@ -392,9 +456,9 @@ object Notifier {
             .setContentTitle(item.title)
             .setContentText(item.body.lineSequence().firstOrNull().orEmpty())
             .setStyle(NotificationCompat.DecoratedCustomViewStyle())
-            .setCustomContentView(banner(ctx, item, c, 2))
-            .setCustomHeadsUpContentView(banner(ctx, item, c, 2))
-            .setCustomBigContentView(banner(ctx, item, c, 8))
+            .setCustomContentView(banner(ctx, item, c, false))
+            .setCustomHeadsUpContentView(banner(ctx, item, c, false))
+            .setCustomBigContentView(banner(ctx, item, c, true))
             .setWhen(item.ts * 1000)
             .setShowWhen(true)
             .setAutoCancel(true)
@@ -421,7 +485,7 @@ object Notifier {
         val item = FeedItem(
             id = 0, ts = System.currentTimeMillis() / 1000, tag = "prova-${v.key}",
             title = "Prova: ${v.titolo}",
-            body = "${v.etichetta(l)} — ${m.label.lowercase()}.",
+            body = v.etichetta(l),
         )
         show(ctx, item, Classificata(v.categoria, if (l == Level.VERDE) Level.VERDE else l, l == Level.VERDE), s, m)
         if (m == Modo.ALLARME) Alarm.start(ctx, 5)
