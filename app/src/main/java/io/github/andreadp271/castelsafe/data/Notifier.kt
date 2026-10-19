@@ -338,6 +338,32 @@ object Notifier {
         }
     }
 
+    /** Banner nello stile dei widget: fondo del colore del livello, testo nero (bianco su rosso e grafite). */
+    private fun banner(ctx: Context, item: FeedItem, c: Classificata, righe: Int): android.widget.RemoteViews {
+        val (fondo, testo) = when {
+            c.rientro -> 0xFF22C55E.toInt() to 0xFF0A0A0A.toInt()
+            c.livello == Level.ROSSO -> 0xFFDC2626.toInt() to 0xFFFFFFFF.toInt()
+            c.livello == Level.ARANCIONE -> 0xFFFB923C.toInt() to 0xFF0A0A0A.toInt()
+            c.livello == Level.GIALLO -> 0xFFFACC15.toInt() to 0xFF0A0A0A.toInt()
+            c.categoria == Categoria.COMUNICAZIONI || c.livello == Level.NESSUNO -> 0xFF1F1A1A.toInt() to 0xFFFFFFFF.toInt()
+            else -> 0xFF22C55E.toInt() to 0xFF0A0A0A.toInt()
+        }
+        val etichetta = when {
+            c.rientro -> "${c.categoria.titolo} · rientro"
+            c.categoria == Categoria.COMUNICAZIONI -> c.categoria.titolo
+            c.livello == Level.NESSUNO -> c.categoria.titolo
+            else -> "${c.categoria.titolo} · ${c.livello.label}"
+        }
+        return android.widget.RemoteViews(ctx.packageName, R.layout.notif_banner).apply {
+            setInt(R.id.banner_bg, "setColorFilter", fondo)
+            setTextViewText(R.id.banner_tag, etichetta)
+            setTextViewText(R.id.banner_title, item.title)
+            setTextViewText(R.id.banner_body, item.body)
+            setInt(R.id.banner_body, "setMaxLines", righe)
+            listOf(R.id.banner_tag, R.id.banner_title, R.id.banner_body).forEach { setTextColor(it, testo) }
+        }
+    }
+
     fun show(ctx: Context, item: FeedItem, c: Classificata, s: NotifySettings, modo: Modo) {
         if (!canNotify(ctx) || modo == Modo.NO) return
         val rosso = c.livello == Level.ROSSO && !c.rientro
@@ -365,7 +391,10 @@ object Notifier {
             .setColor(color)
             .setContentTitle(item.title)
             .setContentText(item.body.lineSequence().firstOrNull().orEmpty())
-            .setStyle(NotificationCompat.BigTextStyle().bigText(item.body))
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(banner(ctx, item, c, 2))
+            .setCustomHeadsUpContentView(banner(ctx, item, c, 2))
+            .setCustomBigContentView(banner(ctx, item, c, 8))
             .setWhen(item.ts * 1000)
             .setShowWhen(true)
             .setAutoCancel(true)
