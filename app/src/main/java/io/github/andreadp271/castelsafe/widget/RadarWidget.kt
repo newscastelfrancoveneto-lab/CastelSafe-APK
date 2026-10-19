@@ -109,14 +109,19 @@ object RadarRender {
         ids.filter { forza || ora - (ultimo[it] ?: 0) > etaMs || bitmaps.value[it] == null }.forEach { render(ctx, it) }
     }
 
-    suspend fun render(ctx: Context, awId: Int) {
+    private val rapporti = mutableMapOf<Int, Float>()
+    fun rapporto(awId: Int): Float? = rapporti[awId]
+
+    /** [ratioReale]: proporzioni larghezza/altezza misurate dal widget; senza, si stimano dalle opzioni del launcher. */
+    suspend fun render(ctx: Context, awId: Int, ratioReale: Float? = null) {
         val o = AppWidgetManager.getInstance(ctx).getAppWidgetOptions(awId)
         // le dimensioni dipendono dall'orientamento: in verticale larghezza minima e altezza massima, in orizzontale il contrario
         val oriz = ctx.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val w = o.getInt(if (oriz) AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH else AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250).coerceAtLeast(1)
         val h = o.getInt(if (oriz) AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT else AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 250).coerceAtLeast(1)
-        val ratio = (w.toFloat() / h).coerceIn(0.5f, 2.4f)
+        val ratio = (ratioReale ?: (w.toFloat() / h)).coerceIn(0.5f, 2.4f)
         val bmp = runCatching { disegna(ctx, ratio, RadarPrefs.km(ctx, awId)) }.getOrNull() ?: return
+        rapporti[awId] = ratio
         bitmaps.value = bitmaps.value + (awId to bmp)
         ultimo[awId] = System.currentTimeMillis()
     }
@@ -217,11 +222,20 @@ object RadarRender {
 }
 
 class RadarWidget : GlanceAppWidget() {
+    override val sizeMode = androidx.glance.appwidget.SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val awId = GlanceAppWidgetManager(context).getAppWidgetId(id)
         if (RadarRender.bitmaps.value[awId] == null) RadarRender.render(context, awId)
         provideContent {
             val bmp = RadarRender.bitmaps.collectAsState().value[awId]
+            // le proporzioni vere del widget si conoscono solo qui: se l'immagine non corrisponde, la si rifà
+            val dim = androidx.glance.LocalSize.current
+            val r = (dim.width.value / dim.height.value.coerceAtLeast(1f)).coerceIn(0.5f, 2.4f)
+            androidx.compose.runtime.LaunchedEffect(Math.round(r * 25)) {
+                val attuale = RadarRender.rapporto(awId)
+                if (attuale == null || kotlin.math.abs(attuale - r) / r > 0.04f) RadarRender.render(context, awId, r)
+            }
             if (bmp != null) {
                 GBox(GlanceModifier.fillMaxSize(), contentAlignment = GAlignment.TopEnd) {
                     Image(
@@ -229,7 +243,7 @@ class RadarWidget : GlanceAppWidget() {
                         modifier = GlanceModifier.fillMaxSize()
                             .background(androidx.glance.color.ColorProvider(androidx.compose.ui.graphics.Color(0xFF0A0A0A), androidx.compose.ui.graphics.Color(0xFF0A0A0A)))
                             .cornerRadius(30.dp).clickable(Widgets.open(context, "mappa")),
-                        contentScale = ContentScale.Crop,
+                        contentScale = ContentScale.Fit,
                     )
                     // aggiorna il radar adesso, senza aprire l'app
                     GBox(GlanceModifier.padding(top = 12.dp, end = 12.dp)) {
