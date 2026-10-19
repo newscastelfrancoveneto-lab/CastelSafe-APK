@@ -1,0 +1,5 @@
+- Nuovo widget «Radar»: le precipitazioni di Radar-DPC sulla mappa dell'app, centrate su Castelfranco Veneto, con raggio a scelta da 10 a 250 km e tasto per aggiornare
+- Anteprima nel selettore per tutti i widget
+- Widget ridimensionabili: testi, colonne e righe si adattano alla misura
+- Nuovo suono per l'allarme: «Bip bip»
+- Notifiche con banner colorato: semaforo del bollettino per le allerte, numero attuale per i sensori
