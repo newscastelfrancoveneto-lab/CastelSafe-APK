@@ -223,16 +223,22 @@ fun NotificheScreen(nav: Nav) {
                 Panel {
                     val last = s.lastCheck.takeIf { it > 0 }?.let { LocalDateTime.ofInstant(Instant.ofEpochMilli(it), ZoneId.systemDefault()) }
                     Muted(
-                        (if (s.controlloVeloce && s.caldo) "Ora calda: controllo ogni minuto. " else "L'app controlla il servizio ogni 15 minuti circa e quando la apri. ") +
+                        (if (s.controlloVeloce && s.inCaldo()) "Fascia dei bollettini: controllo ogni minuto. " else "L'app controlla il servizio ogni 15 minuti circa e quando la apri. ") +
                             "Ultimo controllo: ${ago(last)}" +
                             (s.lastCheckError?.let { " (errore: $it)" } ?: "."),
                     )
                     Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Controllo ogni minuto nell'ora calda")
-                            Muted("Con un'allerta almeno gialla, un sensore oltre la soglia o pioggia in corso il controllo si ripete ogni minuto. Altrimenti ogni 15 minuti.")
+                            Text("Controllo ogni minuto all'uscita dei bollettini")
+                            Muted("Nella fascia in cui di solito escono i bollettini il controllo si ripete ogni minuto. Fuori fascia, ogni 15 minuti.")
                         }
-                        Switch(s.controlloVeloce, { upd { s.controlloVeloce = it; if (it) Notifier.checkNow(ctx) } })
+                        Switch(s.controlloVeloce, { upd { s.controlloVeloce = it; Notifier.checkNow(ctx) } })
+                    }
+                    if (s.controlloVeloce) {
+                        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { pickTime(ctx, s.caldoDa) { upd { s.caldoDa = it; Notifier.checkNow(ctx) } } }) { Text("Dalle ${hm(s.caldoDa)}") }
+                            OutlinedButton(onClick = { pickTime(ctx, s.caldoA) { upd { s.caldoA = it; Notifier.checkNow(ctx) } } }) { Text("Alle ${hm(s.caldoA)}") }
+                        }
                     }
                     TextButton(onClick = { appSettings() }, Modifier.padding(top = 4.dp)) { Text("Suonerie e vibrazioni di sistema") }
                 }

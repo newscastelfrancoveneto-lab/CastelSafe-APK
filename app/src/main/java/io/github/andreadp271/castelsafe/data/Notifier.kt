@@ -179,13 +179,21 @@ class NotifySettings(context: Context) {
         return if (da <= a) m in da until a else m >= da || m < a
     }
 
-    /** Nell'ora calda (allerta, sensori oltre soglia, pioggia) il controllo si ripete ogni minuto. */
+    /** Nella fascia in cui escono i bollettini il controllo si ripete ogni minuto. */
     var controlloVeloce: Boolean
         get() = p.getBoolean("controlloVeloce", true)
         set(v) = p.edit().putBoolean("controlloVeloce", v).apply()
     var caldo: Boolean
         get() = p.getBoolean("caldo", false)
         set(v) = p.edit().putBoolean("caldo", v).apply()
+    var caldoDa: Int    // minuti dalla mezzanotte
+        get() = p.getInt("caldoDa", 11 * 60)
+        set(v) = p.edit().putInt("caldoDa", v).apply()
+    var caldoA: Int
+        get() = p.getInt("caldoA", 15 * 60)
+        set(v) = p.edit().putInt("caldoA", v).apply()
+
+    fun inCaldo(now: LocalTime = LocalTime.now()): Boolean = controlloVeloce && inFascia(now, caldoDa, caldoA)
 
     /** Il livello rosso suona anche nelle ore di quiete. */
     var rossoSempre: Boolean
@@ -297,34 +305,24 @@ object Notifier {
     }
 
     /**
-     * "Ora calda": allerta almeno gialla, un sensore monitorato oltre la prima soglia o pioggia in corso.
-     * In quei momenti il controllo si ripete ogni minuto (poi torna ai 15 minuti del controllo periodico).
+     * Dopo ogni controllo: nella fascia in cui escono i bollettini ne programma uno tra un minuto;
+     * fuori, ne programma uno all'inizio della prossima fascia.
      */
-    suspend fun oraCalda(ctx: Context): Boolean {
-        Repo.init(ctx)
-        runCatching { Repo.loadAllerta() }
-        runCatching { Repo.loadMonitor() }
-        val allerta = (Repo.allerta.value.data?.maxLevel ?: Level.NESSUNO) >= Level.GIALLO
-        val m = Repo.monitor.value.data
-        val sensore = Stations.all.filter { it.monitored }.any { st ->
-            m?.get(st.id)?.sensori.orEmpty().any { (tipo, l) -> Stations.level(st.id, tipo, l.valore) >= Level.GIALLO }
-        }
-        val pioggia = m?.values.orEmpty().any { (it.sensori["PREC"]?.valore ?: 0.0) > 0.0 }
-        return allerta || sensore || pioggia
-    }
-
-    /** Dopo ogni controllo: se è l'ora calda ne programma uno tra un minuto, altrimenti ferma la serie. */
-    suspend fun pianifica(ctx: Context, s: NotifySettings) {
-        val caldo = s.controlloVeloce && runCatching { oraCalda(ctx) }.getOrDefault(false)
-        s.caldo = caldo
+    fun pianifica(ctx: Context, s: NotifySettings) {
         val wm = WorkManager.getInstance(ctx)
-        if (caldo) {
-            val req = OneTimeWorkRequestBuilder<FeedWorker>()
-                .setInitialDelay(1, TimeUnit.MINUTES)
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .build()
-            wm.enqueueUniqueWork("$WORK-caldo", ExistingWorkPolicy.REPLACE, req)
-        } else wm.cancelUniqueWork("$WORK-caldo")
+        if (!s.controlloVeloce) { s.caldo = false; wm.cancelUniqueWork("$WORK-caldo"); return }
+        val caldo = s.inCaldo()
+        s.caldo = caldo
+        val attesa = if (caldo) 1L else {
+            val ora = LocalTime.now()
+            val adesso = ora.hour * 60 + ora.minute
+            ((s.caldoDa - adesso + 1440) % 1440).coerceAtLeast(1).toLong()
+        }
+        val req = OneTimeWorkRequestBuilder<FeedWorker>()
+            .setInitialDelay(attesa, TimeUnit.MINUTES)
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .build()
+        wm.enqueueUniqueWork("$WORK-caldo", ExistingWorkPolicy.REPLACE, req)
     }
 
     /** Controllo immediato (apertura dell'app, ritorno della rete). */
