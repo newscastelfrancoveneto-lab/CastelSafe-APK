@@ -366,8 +366,8 @@ object Notifier {
         return android.widget.RemoteViews(ctx.packageName, R.layout.notif_banner).apply {
             setInt(R.id.banner_bg, "setColorFilter", fondo)
             setTextViewText(R.id.banner_tag, etichetta)
-            setTextViewText(R.id.banner_title, item.title)
-            setTextViewText(R.id.banner_body, item.body)
+            // il titolo senza emoji iniziali (l'etichetta in alto dice già il livello)
+            setTextViewText(R.id.banner_title, item.title.replaceFirst(Regex("""^[^\p{L}\p{N}]+"""), "").ifBlank { item.title })
             // sensori: il numero attuale è il protagonista; il titolo compare nel banner espanso
             if (lettura?.valore != null) {
                 setViewVisibility(R.id.banner_value, android.view.View.VISIBLE)
@@ -378,6 +378,10 @@ object Notifier {
             // allerte: il semaforo dei rischi attivi
             val a = if (c.categoria == Categoria.ALLERTA) Repo.allerta.value.data else null
             val righe = a?.let { semaforo(it) }.orEmpty()
+            // con la tabella, le righe a parole con i bollini ripetono gli stessi livelli: restano solo gli orari
+            val corpo = if (righe.isNotEmpty()) item.body.lines().filterNot { "Idra:" in it || it.startsWith("Oggi —") || it.startsWith("Domani —") }.joinToString(separator = 10.toChar().toString()).trim() else item.body
+            setTextViewText(R.id.banner_body, corpo)
+            if (corpo.isBlank()) setViewVisibility(R.id.banner_body, android.view.View.GONE)
             if (esteso && righe.isNotEmpty()) {
                 setViewVisibility(R.id.banner_table, android.view.View.VISIBLE)
                 removeAllViews(R.id.banner_table)
