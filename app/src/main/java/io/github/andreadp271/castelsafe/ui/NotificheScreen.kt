@@ -223,9 +223,17 @@ fun NotificheScreen(nav: Nav) {
                 Panel {
                     val last = s.lastCheck.takeIf { it > 0 }?.let { LocalDateTime.ofInstant(Instant.ofEpochMilli(it), ZoneId.systemDefault()) }
                     Muted(
-                        "L'app controlla il servizio ogni 15 minuti circa e quando la apri. Ultimo controllo: ${ago(last)}" +
+                        (if (s.controlloVeloce && s.caldo) "Ora calda: controllo ogni minuto. " else "L'app controlla il servizio ogni 15 minuti circa e quando la apri. ") +
+                            "Ultimo controllo: ${ago(last)}" +
                             (s.lastCheckError?.let { " (errore: $it)" } ?: "."),
                     )
+                    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Controllo ogni minuto nell'ora calda")
+                            Muted("Con un'allerta almeno gialla, un sensore oltre la soglia o pioggia in corso il controllo si ripete ogni minuto. Altrimenti ogni 15 minuti.")
+                        }
+                        Switch(s.controlloVeloce, { upd { s.controlloVeloce = it; if (it) Notifier.checkNow(ctx) } })
+                    }
                     TextButton(onClick = { appSettings() }, Modifier.padding(top = 4.dp)) { Text("Suonerie e vibrazioni di sistema") }
                 }
             }

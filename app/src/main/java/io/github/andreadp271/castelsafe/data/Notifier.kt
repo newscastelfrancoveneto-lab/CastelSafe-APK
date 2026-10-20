@@ -179,6 +179,14 @@ class NotifySettings(context: Context) {
         return if (da <= a) m in da until a else m >= da || m < a
     }
 
+    /** Nell'ora calda (allerta, sensori oltre soglia, pioggia) il controllo si ripete ogni minuto. */
+    var controlloVeloce: Boolean
+        get() = p.getBoolean("controlloVeloce", true)
+        set(v) = p.edit().putBoolean("controlloVeloce", v).apply()
+    var caldo: Boolean
+        get() = p.getBoolean("caldo", false)
+        set(v) = p.edit().putBoolean("caldo", v).apply()
+
     /** Il livello rosso suona anche nelle ore di quiete. */
     var rossoSempre: Boolean
         get() = p.getBoolean("rossoSempre", true)
@@ -286,6 +294,37 @@ object Notifier {
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .build()
         WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(WORK, ExistingPeriodicWorkPolicy.UPDATE, req)
+    }
+
+    /**
+     * "Ora calda": allerta almeno gialla, un sensore monitorato oltre la prima soglia o pioggia in corso.
+     * In quei momenti il controllo si ripete ogni minuto (poi torna ai 15 minuti del controllo periodico).
+     */
+    suspend fun oraCalda(ctx: Context): Boolean {
+        Repo.init(ctx)
+        runCatching { Repo.loadAllerta() }
+        runCatching { Repo.loadMonitor() }
+        val allerta = (Repo.allerta.value.data?.maxLevel ?: Level.NESSUNO) >= Level.GIALLO
+        val m = Repo.monitor.value.data
+        val sensore = Stations.all.filter { it.monitored }.any { st ->
+            m?.get(st.id)?.sensori.orEmpty().any { (tipo, l) -> Stations.level(st.id, tipo, l.valore) >= Level.GIALLO }
+        }
+        val pioggia = m?.values.orEmpty().any { (it.sensori["PREC"]?.valore ?: 0.0) > 0.0 }
+        return allerta || sensore || pioggia
+    }
+
+    /** Dopo ogni controllo: se è l'ora calda ne programma uno tra un minuto, altrimenti ferma la serie. */
+    suspend fun pianifica(ctx: Context, s: NotifySettings) {
+        val caldo = s.controlloVeloce && runCatching { oraCalda(ctx) }.getOrDefault(false)
+        s.caldo = caldo
+        val wm = WorkManager.getInstance(ctx)
+        if (caldo) {
+            val req = OneTimeWorkRequestBuilder<FeedWorker>()
+                .setInitialDelay(1, TimeUnit.MINUTES)
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .build()
+            wm.enqueueUniqueWork("$WORK-caldo", ExistingWorkPolicy.REPLACE, req)
+        } else wm.cancelUniqueWork("$WORK-caldo")
     }
 
     /** Controllo immediato (apertura dell'app, ritorno della rete). */
@@ -516,6 +555,7 @@ class FeedWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
             Notifier.check(applicationContext)
             s.lastCheck = System.currentTimeMillis()
             s.lastCheckError = null
+            Notifier.pianifica(applicationContext, s)
             Result.success()
         } catch (e: Exception) {
             s.lastCheckError = Repo.errorText(e)
