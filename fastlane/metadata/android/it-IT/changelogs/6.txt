@@ -1,0 +1,5 @@
+- Controllo ogni minuto nella fascia in cui escono i bollettini (11-15, orari modificabili in Notifiche)
+- Notifica dell'allerta: orari in chiaro senza emoji, semaforo senza righe doppie
+- Notifica delle chiusure: fondo dedicato, con Dove e Quando su righe separate
+- Widget: si disegnano subito con i dati salvati, anche con rete lenta
+- Correzioni: niente notifiche doppie con controlli sovrapposti, radar del widget più leggero
