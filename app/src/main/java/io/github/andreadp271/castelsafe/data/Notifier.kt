@@ -389,6 +389,7 @@ object Notifier {
             c.livello == Level.ROSSO -> 0xFFDC2626.toInt() to 0xFFFFFFFF.toInt()
             c.livello == Level.ARANCIONE -> 0xFFFB923C.toInt() to 0xFF0A0A0A.toInt()
             c.livello == Level.GIALLO -> 0xFFFACC15.toInt() to 0xFF0A0A0A.toInt()
+            c.categoria == Categoria.AVVISI -> 0xFF334155.toInt() to 0xFFFFFFFF.toInt()
             c.categoria == Categoria.COMUNICAZIONI || c.livello == Level.NESSUNO -> 0xFF1F1A1A.toInt() to 0xFFFFFFFF.toInt()
             else -> 0xFF22C55E.toInt() to 0xFF0A0A0A.toInt()
         }
@@ -417,7 +418,11 @@ object Notifier {
             val righe = a?.let { semaforo(it) }.orEmpty()
             // con la tabella, le righe a parole con i bollini ripetono gli stessi livelli: restano solo gli orari
             val corpo = if (righe.isNotEmpty()) item.body.lines().filterNot { "Idra:" in it || it.startsWith("Oggi —") || it.startsWith("Domani —") }.joinToString(separator = 10.toChar().toString()).trim() else item.body
-            val testoCorpo = if (c.categoria == Categoria.ALLERTA) pulisciAllerta(corpo) else corpo
+            val testoCorpo = when (c.categoria) {
+                Categoria.ALLERTA -> pulisciAllerta(corpo)
+                Categoria.AVVISI -> pulisciAvviso(corpo)
+                else -> corpo
+            }
             setTextViewText(R.id.banner_body, testoCorpo)
             if (testoCorpo.isBlank()) setViewVisibility(R.id.banner_body, android.view.View.GONE)
             if (esteso && righe.isNotEmpty()) {
@@ -435,6 +440,24 @@ object Notifier {
     private val mesi = listOf("gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic")
     private val periodo = Regex("""(Oggi|Domani):\s*(\d{2})/(\d{2})/\d{4}\s+(\d{2}:\d{2})\s*\S+\s*\d{2}/\d{2}/\d{4}\s+(\d{2}:\d{2})""")
     private val emoji = Regex("""[\p{So}\p{Cs}\u200d\ufe0f]""")
+
+    private val dalAl = Regex("""Dal\s+(\d{2})/(\d{2})/\d{4}\s+al\s+(\d{2})/(\d{2})/\d{4}""")
+
+    /** Chiusure: descrizione, poi "Dove" e "Quando" su righe separate, con date brevi e senza emoji. */
+    private fun pulisciAvviso(corpo: String): String = corpo.split(" – ").mapNotNull { parte ->
+        val p = emoji.replace(parte, "").trim()
+        val m = dalAl.find(p)
+        val riga = when {
+            m != null -> {
+                val (d1, m1, d2, m2) = m.destructured
+                fun giorno(g: String, mese: String) = g.trimStart('0') + " " + mesi.getOrElse(mese.toInt() - 1) { mese }
+                "Quando · dal " + giorno(d1, m1) + " al " + giorno(d2, m2)
+            }
+            p.startsWith("Area:") -> "Dove · " + p.removePrefix("Area:").trim()
+            else -> p
+        }
+        riga.ifBlank { null }
+    }.joinToString(10.toChar().toString())
 
     /** Orari del bollettino in chiaro ("Oggi · 20 ott · 12:00 – 24:00"), senza emoji. */
     private fun pulisciAllerta(corpo: String): String = corpo.lines().mapNotNull { riga ->
