@@ -78,10 +78,19 @@ fun SensorChart(
     val cs = MaterialTheme.colorScheme
     val measurer = rememberTextMeasurer()
     val slop = LocalViewConfiguration.current.touchSlop
+    // l'asse X è il tempo vero (minuti dal primo punto): i buchi nei dati restano buchi
+    val tm = remember(times) { FloatArray(n) { java.time.Duration.between(times[0], times[it]).toMinutes().toFloat() } }
+    val total = tm[n - 1].coerceAtLeast(1f)
+    val step = remember(tm) { tm.toList().zipWithNext { a, b -> b - a }.filter { it > 0 }.sorted().let { if (it.isEmpty()) 1f else it[it.size / 2] } }
+    fun nearest(m: Float): Int {
+        var lo = 0; var hi = n - 1
+        while (lo < hi) { val mid = (lo + hi) / 2; if (tm[mid] < m) lo = mid + 1 else hi = mid }
+        return if (lo > 0 && m - tm[lo - 1] <= tm[lo] - m) lo - 1 else lo
+    }
     var start by remember(n) { mutableFloatStateOf(0f) }
-    var end by remember(n) { mutableFloatStateOf((n - 1).toFloat()) }
+    var end by remember(n) { mutableFloatStateOf(total) }
     var selected by remember(n) { mutableIntStateOf(-1) }
-    val zoomed = start > 0.5f || end < n - 1.5f
+    val zoomed = start > step / 2 || end < total - step / 2
     val labelStyle = TextStyle(fontSize = 10.sp, color = cs.onSurfaceVariant)
     val leftPad = 46f; val bottomPad = 22f; val topPad = if (arrows != null) 30f else 8f
 
@@ -92,7 +101,7 @@ fun SensorChart(
                 fun indexAt(x: Float): Int {
                     val w = size.width - left
                     val f = ((x - left) / w).coerceIn(0f, 1f)
-                    return (start + f * (end - start)).roundToInt().coerceIn(0, n - 1)
+                    return nearest(start + f * (end - start))
                 }
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -109,10 +118,10 @@ fun SensorChart(
                             val cx = ev.calculateCentroid().x
                             val w = size.width - left
                             val span = end - start
-                            val newSpan = (span / zoom).coerceIn(minOf(8f, (n - 1).toFloat()), (n - 1).toFloat())
+                            val newSpan = (span / zoom).coerceIn(minOf(8f * step, total), total)
                             val anchor = start + ((cx - left) / w).coerceIn(0f, 1f) * span
                             var s = anchor - (anchor - start) * newSpan / span - pan.x / w * newSpan
-                            s = s.coerceIn(0f, (n - 1) - newSpan)
+                            s = s.coerceIn(0f, total - newSpan)
                             start = s; end = s + newSpan
                             ev.changes.forEach { it.consume() }
                             continue
@@ -128,7 +137,7 @@ fun SensorChart(
                                 val w = size.width - left
                                 val dx = (c.position.x - c.previousPosition.x) / w * (end - start)
                                 val span = end - start
-                                val s = (start - dx).coerceIn(0f, (n - 1) - span)
+                                val s = (start - dx).coerceIn(0f, total - span)
                                 start = s; end = s + span
                             } else selected = indexAt(c.position.x)
                             c.consume()
@@ -140,7 +149,7 @@ fun SensorChart(
             val l = leftPad * density; val b = bottomPad * density; val tp = topPad * density
             val w = size.width - l; val h = size.height - b - tp
             val span = (end - start).coerceAtLeast(1f)
-            fun x(i: Int) = l + w * (i - start) / span
+            fun x(i: Int) = l + w * (tm[i] - start) / span
             fun y(v: Double) = tp + h * (1 - ((v - yMin) / (yMax - yMin))).toFloat()
 
             // griglia e valori sull'asse Y
@@ -154,43 +163,38 @@ fun SensorChart(
             val title = measurer.measure(yTitle, labelStyle)
             rotate(-90f, Offset(6f * density, tp + h / 2)) { drawText(title, topLeft = Offset(6f * density - title.size.width / 2, tp + h / 2 - title.size.height)) }
 
-            // etichette X: al massimo 6, come maxTicksLimit della PWA
-            val first = start.toInt().coerceIn(0, n - 1); val last = end.roundToInt().coerceIn(0, n - 1)
-            val visible = last - first
-            val stepI = maxOf(1, (visible / 5.0).roundToInt())
-            var i = first
-            var lastRight = -1f
-            while (i <= last) {
-                val t = measurer.measure(times[i].format(labelFmt), labelStyle)
-                val lx = (x(i) - t.size.width / 2).coerceIn(l, size.width - t.size.width)
-                if (lx > lastRight + 6f * density) {
-                    drawText(t, topLeft = Offset(lx, tp + h + 5f * density))
-                    lastRight = lx + t.size.width
-                }
-                i += stepI
+            // etichette X: sei, a intervalli di tempo uguali, come maxTicksLimit della PWA
+            val first = nearest(start); val last = nearest(end)
+            val larg = measurer.measure(times[0].format(labelFmt), labelStyle).size.width
+            val nEt = (w / (larg + 24f * density)).toInt().coerceIn(2, 6)
+            for (k in 0 until nEt) {
+                val f = k / (nEt - 1f)
+                val lab = times[0].plusSeconds(((start + (end - start) * f) * 60).toLong())
+                val tt = measurer.measure(lab.format(labelFmt), labelStyle)
+                val lx = (l + w * f - tt.size.width / 2).coerceIn(l, size.width - tt.size.width)
+                drawText(tt, topLeft = Offset(lx, tp + h + 5f * density))
             }
 
             clipRect(l, 0f, size.width, tp + h) {
                 val barSeries = series.filter { it.kind == ChartSeries.Kind.BAR }
                 barSeries.forEach { s ->
-                    val bw = (w / span * 0.8f).coerceIn(1f, 24f * density)
+                    val bw = (w / span * step * 0.8f).coerceIn(1f, 24f * density)
                     s.values.forEachIndexed { idx, v ->
                         if (v != null && v > 0 && idx >= first - 1 && idx <= last + 1) drawRect(s.color.copy(alpha = 0.75f), Offset(x(idx) - bw / 2, y(v)), Size(bw, y(yMin) - y(v)))
                     }
                 }
                 series.filter { it.kind != ChartSeries.Kind.BAR }.forEach { s ->
                     val path = Path(); var started = false
-                    var firstX = 0f; var lastX = 0f
+                    val fill = Path(); var segStart = 0f; var segEnd = 0f
+                    fun chiudi() { if (s.fill && started) { fill.lineTo(segEnd, tp + h); fill.lineTo(segStart, tp + h); fill.close() } }
                     s.values.forEachIndexed { idx, v ->
-                        if (v == null) { started = false; return@forEachIndexed }
+                        if (v == null) { chiudi(); started = false; return@forEachIndexed }
                         val px = x(idx); val py = y(v)
-                        if (!started) { path.moveTo(px, py); started = true; if (firstX == 0f) firstX = px } else path.lineTo(px, py)
-                        lastX = px
+                        if (!started) { path.moveTo(px, py); fill.moveTo(px, py); started = true; segStart = px } else { path.lineTo(px, py); fill.lineTo(px, py) }
+                        segEnd = px
                     }
-                    if (s.fill) {
-                        val f = Path().apply { addPath(path); lineTo(lastX, tp + h); lineTo(firstX, tp + h); close() }
-                        drawPath(f, s.color.copy(alpha = 0.15f))
-                    }
+                    chiudi()
+                    if (s.fill) drawPath(fill, s.color.copy(alpha = 0.15f))
                     drawPath(
                         path, s.color,
                         style = Stroke(
@@ -204,7 +208,7 @@ fun SensorChart(
             // frecce del vento: verso dove soffia (provenienza + 180°), come la PWA
             if (arrows != null) {
                 val base = series.first().values
-                val every = maxOf(1, (14f * density / (w / span)).toInt() + 1)
+                val every = maxOf(1, (14f * density / (w / span * step)).toInt() + 1)
                 val sz = 9f * density
                 for (idx in first..last) {
                     if ((idx - first) % every != 0) continue
@@ -226,7 +230,7 @@ fun SensorChart(
             }
 
             // valore toccato
-            if (selected in 0 until n && selected.toFloat() in (start - 0.5f)..(end + 0.5f)) {
+            if (selected in 0 until n && tm[selected] in (start - step / 2)..(end + step / 2)) {
                 val sx = x(selected)
                 drawLine(cs.onSurfaceVariant, Offset(sx, tp), Offset(sx, tp + h), 1.5f)
                 series.forEach { s -> s.values.getOrNull(selected)?.let { if (s.kind != ChartSeries.Kind.BAR) drawCircle(s.color, 4f * density, Offset(sx, y(it))) } }
@@ -248,7 +252,7 @@ fun SensorChart(
                 texts.forEach { t -> drawText(t, topLeft = Offset(bx.coerceAtLeast(0f) + 10f * density, ty)); ty += t.size.height }
             }
         }
-        if (zoomed) TextButton(onClick = { start = 0f; end = (n - 1).toFloat() }, modifier = Modifier.align(Alignment.TopEnd).padding(end = 4.dp)) {
+        if (zoomed) TextButton(onClick = { start = 0f; end = total }, modifier = Modifier.align(Alignment.TopEnd).padding(end = 4.dp)) {
             Text("Ripristina zoom", style = MaterialTheme.typography.labelSmall)
         }
     }

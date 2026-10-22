@@ -1,0 +1,2 @@
+- Grafici dei sensori: il riempimento sotto la linea non sbava più sopra i buchi nei dati
+- Asse del tempo reale e orari a intervalli uguali
