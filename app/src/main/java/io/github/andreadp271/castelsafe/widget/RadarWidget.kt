@@ -76,6 +76,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -112,7 +113,8 @@ object RadarRender {
         })
         b
     }
-    private val ultimo = mutableMapOf<Int, Long>()
+    private val ultimo = java.util.concurrent.ConcurrentHashMap<Int, Long>()
+    private val sequenza = kotlinx.coroutines.sync.Mutex()
 
     private const val Z = 7          // zoom nativo delle tessere radar
     private const val T = 256
@@ -125,17 +127,29 @@ object RadarRender {
         ids.filter { forza || ora - (ultimo[it] ?: 0) > etaMs || bitmaps.value[it] == null }.forEach { render(ctx, it) }
     }
 
-    private val rapporti = mutableMapOf<Int, Float>()
+    private val rapporti = java.util.concurrent.ConcurrentHashMap<Int, Float>()
     fun rapporto(awId: Int): Float? = rapporti[awId]
 
     /** [ratioReale]: proporzioni larghezza/altezza misurate dal widget; senza, si stimano dalle opzioni del launcher. */
-    suspend fun render(ctx: Context, awId: Int, ratioReale: Float? = null) {
+    /** Widget eliminato: si libera l'immagine in memoria. */
+    fun dimentica(ids: IntArray) {
+        ids.forEach { ultimo.remove(it); rapporti.remove(it) }
+        bitmaps.value = bitmaps.value - ids.toSet()
+        ore.value = ore.value - ids.toSet()
+    }
+
+    suspend fun render(ctx: Context, awId: Int, ratioReale: Float? = null) = sequenza.withLock {
+        disegnaWidget(ctx, awId, ratioReale)
+    }
+
+    private suspend fun disegnaWidget(ctx: Context, awId: Int, ratioReale: Float?) {
         val o = AppWidgetManager.getInstance(ctx).getAppWidgetOptions(awId)
         // le dimensioni dipendono dall'orientamento: in verticale larghezza minima e altezza massima, in orizzontale il contrario
         val oriz = ctx.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val w = o.getInt(if (oriz) AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH else AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250).coerceAtLeast(1)
         val h = o.getInt(if (oriz) AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT else AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 250).coerceAtLeast(1)
-        val ratio = ((ratioReale ?: (w.toFloat() / h)) * 1.2f).coerceIn(0.6f, 2.6f)
+        // la mappa è sempre un po' più larga del widget (1,2x): si ritaglia solo ai lati
+        val ratio = (ratioReale ?: (w.toFloat() / h * 1.2f)).coerceIn(0.6f, 2.6f)
         val bmp = runCatching { disegna(ctx, ratio, RadarPrefs.km(ctx, awId), awId) }.getOrNull() ?: return
         rapporti[awId] = ratio
         bitmaps.value = bitmaps.value + (awId to bmp)
@@ -223,7 +237,6 @@ class RadarWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val awId = GlanceAppWidgetManager(context).getAppWidgetId(id)
-        if (RadarRender.bitmaps.value[awId] == null) RadarRender.render(context, awId)
         provideContent {
             val bmp = RadarRender.bitmaps.collectAsState().value[awId]
             // le proporzioni vere del widget si conoscono solo qui: se l'immagine non corrisponde, la si rifà
@@ -287,6 +300,19 @@ class RadarWidget : GlanceAppWidget() {
                         }
                     }
                 }
+            } else {
+                GBox(
+                    GlanceModifier.fillMaxSize().background(androidx.glance.color.ColorProvider(androidx.compose.ui.graphics.Color(0xFF0A0A0A), androidx.compose.ui.graphics.Color(0xFF0A0A0A))).cornerRadius(30.dp),
+                    contentAlignment = GAlignment.Center,
+                ) {
+                    androidx.glance.text.Text(
+                        "Carico il radar…",
+                        style = androidx.glance.text.TextStyle(
+                            color = androidx.glance.color.ColorProvider(androidx.compose.ui.graphics.Color(0xFFB6C0CC), androidx.compose.ui.graphics.Color(0xFFB6C0CC)),
+                            fontSize = 13.sp, fontWeight = androidx.glance.text.FontWeight.Bold,
+                        ),
+                    )
+                }
             }
         }
     }
@@ -306,6 +332,7 @@ class RadarWidgetReceiver : GlanceAppWidgetReceiver() {
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
         super.onDeleted(context, appWidgetIds)
         RadarPrefs.elimina(context, appWidgetIds)
+        RadarRender.dimentica(appWidgetIds)
     }
 
     /** Ridimensionato dall'utente: l'immagine va rifatta con le nuove proporzioni. */

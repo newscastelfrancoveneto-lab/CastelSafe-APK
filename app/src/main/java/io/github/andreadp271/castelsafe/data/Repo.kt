@@ -59,6 +59,21 @@ object Repo {
 
     private fun file(key: String) = File(dir, "$key.txt")
 
+    /** Mostra subito le copie su disco (senza rete): i widget si disegnano senza aspettare il download. */
+    fun prime(stazioni: List<String> = emptyList()) {
+        fun <T> leggi(key: String, flow: MutableStateFlow<Res<T>>, parse: (String) -> T) {
+            if (flow.value.data != null) return
+            val f = file(key)
+            if (!f.exists()) return
+            val dati = runCatching { parse(f.readText()) }.getOrNull() ?: return
+            val at = LocalDateTime.ofEpochSecond(f.lastModified() / 1000, 0, java.time.ZoneId.systemDefault().rules.getOffset(java.time.Instant.ofEpochMilli(f.lastModified())))
+            flow.value = Res(dati, fetchedAt = at, fromCache = true)
+        }
+        leggi("allerta", allerta, Api::parseAllerta)
+        leggi("monitor", monitor, Api::parseMonitor)
+        stazioni.forEach { id -> leggi("stazione_$id", stazione(id) as MutableStateFlow<Res<List<Serie>>>, Api::parseStation) }
+    }
+
     /**
      * Scarica [key] con [fetch], lo interpreta con [parse] e aggiorna [flow].
      * Se il download fallisce resta il dato precedente (o quello salvato su disco).

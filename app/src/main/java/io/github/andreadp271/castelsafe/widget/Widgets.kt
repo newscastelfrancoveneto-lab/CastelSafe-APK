@@ -140,8 +140,10 @@ class AllertaWidget : GlanceAppWidget() {
     override val sizeMode = androidx.glance.appwidget.SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        Widgets.load(context)
+        Repo.init(context)
+        Repo.prime()
         provideContent {
+            androidx.compose.runtime.LaunchedEffect(Unit) { Widgets.load(context) }
             Widgets.tick.collectAsState().value
             val a = Repo.allerta.collectAsState().value.data
             AllertaContent(context, a)
@@ -211,10 +213,15 @@ class SensoriWidget : GlanceAppWidget() {
     override val sizeMode = androidx.glance.appwidget.SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        Widgets.load(context)
+        Repo.init(context)
         val awId = GlanceAppWidgetManager(context).getAppWidgetId(id)
-        WidgetPrefs.righe(context, awId).map { it.sid }.distinct().forEach { runCatching { Repo.loadStazione(it) } }
+        val sids = WidgetPrefs.righe(context, awId).map { it.sid }.distinct()
+        Repo.prime(sids)
         provideContent {
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                Widgets.load(context)
+                sids.forEach { runCatching { Repo.loadStazione(it) } }
+            }
             val t = Widgets.tick.collectAsState().value
             val m = Repo.monitor.collectAsState().value.data
             val righe = remember(t) { WidgetPrefs.righe(context, awId) }

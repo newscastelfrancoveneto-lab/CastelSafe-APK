@@ -1,5 +1,6 @@
 package io.github.andreadp271.castelsafe.data
 
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.launch
 import android.Manifest
 import android.app.NotificationChannel
@@ -334,7 +335,11 @@ object Notifier {
     }
 
     /** Legge le notifiche nuove dal server e mostra quelle che l'utente vuole ricevere. */
-    suspend fun check(ctx: Context) {
+    private val checkLock = kotlinx.coroutines.sync.Mutex()
+
+    suspend fun check(ctx: Context) = checkLock.withLock { controlla(ctx) }
+
+    private suspend fun controlla(ctx: Context) {
         val s = NotifySettings(ctx)
         val res = Api.feed(if (s.initialized) s.lastId else 0)
         val now = System.currentTimeMillis() / 1000
@@ -585,8 +590,12 @@ object Notifier {
 class FeedWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         val s = NotifySettings(applicationContext)
-        // i widget si aggiornano a ogni controllo, anche se il registro notifiche non risponde
-        runCatching { io.github.andreadp271.castelsafe.widget.Widgets.updateAll(applicationContext) }
+        // i widget si aggiornano anche se il registro notifiche non risponde, ma non a ogni minuto
+        val ora = System.currentTimeMillis()
+        if (ora - ultimoWidget > 5 * 60_000L) {
+            ultimoWidget = ora
+            runCatching { io.github.andreadp271.castelsafe.widget.Widgets.updateAll(applicationContext) }
+        }
         return try {
             Notifier.check(applicationContext)
             s.lastCheck = System.currentTimeMillis()
@@ -595,7 +604,12 @@ class FeedWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
             Result.success()
         } catch (e: Exception) {
             s.lastCheckError = Repo.errorText(e)
+            runCatching { Notifier.pianifica(applicationContext, s) }
             if (runAttemptCount < 2) Result.retry() else Result.success()
         }
+    }
+
+    private companion object {
+        @Volatile var ultimoWidget = 0L
     }
 }

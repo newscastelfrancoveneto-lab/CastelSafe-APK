@@ -84,8 +84,9 @@ class GraficoWidget : GlanceAppWidget() {
         Repo.init(context)
         val awId = GlanceAppWidgetManager(context).getAppWidgetId(id)
         val (sid, tipo) = GraficoPrefs.get(context, awId)
-        runCatching { Repo.loadStazione(sid) }
+        Repo.prime(listOf(sid))
         provideContent {
+            androidx.compose.runtime.LaunchedEffect(sid) { runCatching { Repo.loadStazione(sid) } }
             val t = Widgets.tick.collectAsState().value
             val (s2, t2) = remember(t) { GraficoPrefs.get(context, awId) }
             val serie = Repo.stazione(s2).collectAsState().value.data
