@@ -417,8 +417,9 @@ object Notifier {
             val righe = a?.let { semaforo(it) }.orEmpty()
             // con la tabella, le righe a parole con i bollini ripetono gli stessi livelli: restano solo gli orari
             val corpo = if (righe.isNotEmpty()) item.body.lines().filterNot { "Idra:" in it || it.startsWith("Oggi —") || it.startsWith("Domani —") }.joinToString(separator = 10.toChar().toString()).trim() else item.body
-            setTextViewText(R.id.banner_body, corpo)
-            if (corpo.isBlank()) setViewVisibility(R.id.banner_body, android.view.View.GONE)
+            val testoCorpo = if (c.categoria == Categoria.ALLERTA) pulisciAllerta(corpo) else corpo
+            setTextViewText(R.id.banner_body, testoCorpo)
+            if (testoCorpo.isBlank()) setViewVisibility(R.id.banner_body, android.view.View.GONE)
             if (esteso && righe.isNotEmpty()) {
                 setViewVisibility(R.id.banner_table, android.view.View.VISIBLE)
                 removeAllViews(R.id.banner_table)
@@ -430,6 +431,20 @@ object Notifier {
             listOf(R.id.banner_tag, R.id.banner_title, R.id.banner_body).forEach { setTextColor(it, testo) }
         }
     }
+
+    private val mesi = listOf("gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic")
+    private val periodo = Regex("""(Oggi|Domani):\s*(\d{2})/(\d{2})/\d{4}\s+(\d{2}:\d{2})\s*\S+\s*\d{2}/\d{2}/\d{4}\s+(\d{2}:\d{2})""")
+    private val emoji = Regex("""[\p{So}\p{Cs}\u200d\ufe0f]""")
+
+    /** Orari del bollettino in chiaro ("Oggi · 20 ott · 12:00 – 24:00"), senza emoji. */
+    private fun pulisciAllerta(corpo: String): String = corpo.lines().mapNotNull { riga ->
+        val m = periodo.find(riga)
+        val r = if (m != null) {
+            val (giorno, gg, mm, da, a) = m.destructured
+            "$giorno · ${gg.trimStart('0')} ${mesi.getOrElse(mm.toInt() - 1) { mm }} · $da – $a"
+        } else emoji.replace(riga, "").trim()
+        r.ifBlank { null }
+    }.joinToString(10.toChar().toString())
 
     /** Tutti i rischi del bollettino, i più gravi per primi: nome e livello di oggi e di domani. */
     private fun semaforo(a: Allerta): List<Triple<String, Level, Level>> {
