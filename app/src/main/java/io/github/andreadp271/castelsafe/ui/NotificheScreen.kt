@@ -240,6 +240,13 @@ fun NotificheScreen(nav: Nav) {
                             OutlinedButton(onClick = { pickTime(ctx, s.caldoA) { upd { s.caldoA = it; Notifier.checkNow(ctx) } } }) { Text("Alle ${hm(s.caldoA)}") }
                         }
                     }
+                    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Nuove versioni dell'app")
+                            Muted("Una notifica quando su GitHub esce un aggiornamento di CastelSafe.")
+                        }
+                        Switch(s.avvisoAggiornamenti, { upd { s.avvisoAggiornamenti = it; if (it) s.ultimoControlloAgg = 0 } })
+                    }
                     TextButton(onClick = { appSettings() }, Modifier.padding(top = 4.dp)) { Text("Suonerie e vibrazioni di sistema") }
                 }
             }

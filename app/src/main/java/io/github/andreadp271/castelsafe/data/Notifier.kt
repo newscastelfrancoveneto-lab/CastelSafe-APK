@@ -227,6 +227,18 @@ class NotifySettings(context: Context) {
     var lastCheckError: String?
         get() = p.getString("lastCheckError", null)
         set(v) = p.edit().putString("lastCheckError", v).apply()
+
+    // ── nuove versioni dell'app ──────────────────────────────────────────────
+    var avvisoAggiornamenti: Boolean
+        get() = p.getBoolean("avvisoAggiornamenti", true)
+        set(v) = p.edit().putBoolean("avvisoAggiornamenti", v).apply()
+    var ultimoControlloAgg: Long
+        get() = p.getLong("ultimoControlloAgg", 0)
+        set(v) = p.edit().putLong("ultimoControlloAgg", v).apply()
+    /** Versione già notificata: la stessa non si ripete. */
+    var aggiornamentoNotificato: String?
+        get() = p.getString("aggiornamentoNotificato", null)
+        set(v) = p.edit().putString("aggiornamentoNotificato", v).apply()
 }
 
 /** Notifica ricevuta, conservata nella cronologia dell'app. */
@@ -264,6 +276,9 @@ object Notifier {
     const val EXTRA_ROUTE = "route"
     private const val CH_CRITICO = "critico"
     private const val CH_SERVIZIO = "servizio"
+    private const val CH_AGGIORNAMENTI = "aggiornamenti"
+    /** GitHub concede 60 richieste l'ora per rete: basta guardare ogni 6 ore. */
+    private const val AGG_OGNI_MS = 6 * 3600_000L
     private const val WORK = "feed"
     /** Una notifica più vecchia di così (telefono spento, senza rete) entra in cronologia ma non suona. */
     private const val MAX_AGE_S = 24 * 3600L
@@ -286,7 +301,10 @@ object Notifier {
             vibrationPattern = longArrayOf(0, 800, 300, 800, 300, 800)
         }
         list += NotificationChannel(CH_SERVIZIO, "Stato dell'app", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Aggiornamenti dell'app e messaggi di servizio"
+            description = "Messaggi di servizio"
+        }
+        list += NotificationChannel(CH_AGGIORNAMENTI, "Aggiornamenti dell'app", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "Nuova versione di CastelSafe disponibile"
         }
         nm.createNotificationChannels(list)
     }
@@ -375,6 +393,34 @@ object Notifier {
             Alarm.start(ctx)
             Alarm.awaitEnd()
         }
+    }
+
+    /** Ogni 6 ore guarda se su GitHub c'è una versione nuova e la notifica una volta sola. */
+    suspend fun controllaAggiornamento(ctx: Context) {
+        val s = NotifySettings(ctx)
+        val ora = System.currentTimeMillis()
+        if (!s.avvisoAggiornamenti || !canNotify(ctx) || ora - s.ultimoControlloAgg < AGG_OGNI_MS) return
+        val r = Updater.latest()
+        s.ultimoControlloAgg = ora
+        if (!Updater.isNewer(r.version) || r.version == s.aggiornamentoNotificato) return
+        val intent = Intent(ctx, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .putExtra(EXTRA_ROUTE, "aggiornamenti")
+        val pi = PendingIntent.getActivity(ctx, CH_AGGIORNAMENTI.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val novita = r.notes.lines().map { it.trim().removePrefix("-").trim() }.filter { it.isNotEmpty() }
+        val n = NotificationCompat.Builder(ctx, CH_AGGIORNAMENTI)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFF8D021F.toInt())
+            .setContentTitle("CastelSafe ${r.version} disponibile")
+            .setContentText(novita.firstOrNull() ?: "Tocca per scaricare e installare")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(
+                (novita.joinToString(10.toChar().toString()) { "• $it" } + 10.toChar() + 10.toChar() + "Tocca per scaricare e installare").trim()))
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .build()
+        runCatching { NotificationManagerCompat.from(ctx).notify(CH_AGGIORNAMENTI, 0, n) }
+        s.aggiornamentoNotificato = r.version
     }
 
     fun routeFor(item: FeedItem): String {
@@ -596,6 +642,7 @@ class FeedWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
             ultimoWidget = ora
             runCatching { io.github.andreadp271.castelsafe.widget.Widgets.updateAll(applicationContext) }
         }
+        runCatching { Notifier.controllaAggiornamento(applicationContext) }
         return try {
             Notifier.check(applicationContext)
             s.lastCheck = System.currentTimeMillis()

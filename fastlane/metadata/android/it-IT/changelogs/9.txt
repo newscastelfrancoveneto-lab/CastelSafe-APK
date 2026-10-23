@@ -1,0 +1,2 @@
+- Notifica quando esce una nuova versione dell'app (si può disattivare in Notifiche)
+- Pioggia 24h corretta: evaporazione calcolata con il metodo standard FAO-56 (temperatura, umidità, radiazione e vento)

@@ -182,9 +182,10 @@ private fun buildModel(st: Station, s: Scheda, all: List<Serie>): ChartModel {
         val temp = SensorData.support(all, times, "temperat", "temp aria", "temp")
         val rad = SensorData.support(all, times, "radiaz", "solar", "solare", "globale")
         val hum = SensorData.support(all, times, "umid", "humid", "relat")
-        val drying = temp != null || rad != null || hum != null
+        val wind = SensorData.support(all, times, "vvento")
+        val drying = temp != null && rad != null && hum != null
         val acc = SensorData.rolling24h(times, bars)
-        val corr = if (drying) SensorData.dryingAdjusted24h(times, bars, temp ?: times.map { null }, rad ?: times.map { null }, hum ?: times.map { null }) else null
+        val corr = if (drying) SensorData.dryingAdjusted24h(times, bars, temp ?: times.map { null }, rad ?: times.map { null }, hum ?: times.map { null }, wind ?: times.map { null }) else null
         val line = if (corr != null) ChartSeries("Accumulo 24h corretto ($unit)", corr, Color(0xFF7C3AED)) else ChartSeries("Precipitazione cumulata 24h ($unit)", acc, Color(0xFFF97316))
         val accShown = corr ?: acc
         val top = maxOf(bars.maxOrNull() ?: 0.0, accShown.maxOrNull() ?: 0.0)
@@ -201,7 +202,7 @@ private fun buildModel(st: Station, s: Scheda, all: List<Serie>): ChartModel {
             listOf("Precipitazione ($unit)" to Color(0xFF2563EB), line.label to line.color), false,
             listOf("Data / Ora", "Precipitazione ($unit)", if (corr != null) "Accumulo 24h corretto" else "Accumulo 24h"),
             times.indices.reversed().map { i -> listOf(times[i].format(rowFmt), f(bars[i], 2), f(accShown[i], 2)) to Level.NESSUNO },
-            note = if (corr != null) "Accumulo corretto per l'evaporazione stimata da temperatura, radiazione e umidità della stazione." else null,
+            note = if (corr != null) "Accumulo corretto per l'evaporazione (FAO-56 Penman-Monteith) calcolata da temperatura, umidità, radiazione e vento della stazione." else null,
         )
     }
 
