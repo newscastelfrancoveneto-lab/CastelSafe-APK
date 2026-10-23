@@ -1,0 +1,1 @@
+- Pioggia accumulata 24h: corretto un errore che sottostimava la pioggia quando piove poco

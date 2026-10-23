@@ -56,31 +56,21 @@ object SensorData {
     /** Pioggia "speciale" (barre + accumulo) per le stazioni di Castelfranco e del Muson, come la PWA. */
     fun pioggiaSpeciale(stationId: String, s: Scheda) = s.isPioggia && stationId.trimStart('0') in setOf("292", "554", "102")
 
-    /** Mm per intervallo; se la serie sembra cumulata la trasforma in incrementi. */
-    fun bars(values: List<Double?>): List<Double> {
-        val v = values.map { it ?: 0.0 }
-        val decreases = (1 until v.size).count { v[it] < v[it - 1] }
-        val cumulative = decreases <= maxOf(2, v.size / 10)
-        return v.mapIndexed { i, cur ->
-            when {
-                !cumulative -> cur
-                i == 0 -> 0.0
-                else -> if (cur >= v[i - 1]) cur - v[i - 1] else cur
-            }
-        }.map { maxOf(0.0, Math.round(it * 1000) / 1000.0) }
-    }
+    /** Mm per intervallo: ARPAV (PREC) li dà già così, non come totale progressivo. */
+    fun bars(values: List<Double?>): List<Double> =
+        values.map { maxOf(0.0, Math.round((it ?: 0.0) * 1000) / 1000.0) }
 
     private fun stepMs(t: List<LocalDateTime>): Long =
         (1 until t.size).map { Duration.between(t[it - 1], t[it]).toMillis() }.firstOrNull { it > 0 } ?: 30 * 60_000L
 
-    /** Somma mobile delle ultime 24 ore. */
+    /** Somma mobile delle ultime 24 ore (ogni valore copre l'intervallo che finisce al suo istante: 48 valori da 30'). */
     fun rolling24h(t: List<LocalDateTime>, bars: List<Double>): List<Double> {
         val window = 24 * 3600_000L
         val out = ArrayList<Double>(bars.size)
         var start = 0; var sum = 0.0
         for (i in bars.indices) {
             sum += bars[i]
-            while (start <= i && Duration.between(t[start], t[i]).toMillis() > window) { sum -= bars[start]; start++ }
+            while (start <= i && Duration.between(t[start], t[i]).toMillis() >= window) { sum -= bars[start]; start++ }
             out += Math.round(sum * 1000) / 1000.0
         }
         return out
@@ -117,7 +107,7 @@ object SensorData {
                 val c = minOf(q.remaining, loss)
                 q.remaining -= c; sum = maxOf(0.0, sum - c); loss -= c
             }
-            while (queue.isNotEmpty() && Duration.between(queue.first().date, t[i]).toMillis() > window) {
+            while (queue.isNotEmpty() && Duration.between(queue.first().date, t[i]).toMillis() >= window) {
                 sum = maxOf(0.0, sum - queue.removeFirst().remaining)
             }
             while (queue.isNotEmpty() && queue.first().remaining <= 0) queue.removeFirst()
