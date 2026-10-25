@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.andreadp271.castelsafe.data.Tempo
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
@@ -165,11 +166,11 @@ fun SensorChart(
 
             // etichette X: sei, a intervalli di tempo uguali, come maxTicksLimit della PWA
             val first = nearest(start); val last = nearest(end)
-            val larg = measurer.measure(times[0].format(labelFmt), labelStyle).size.width
+            val larg = measurer.measure(Tempo.legale(times[0]).format(labelFmt), labelStyle).size.width
             val nEt = (w / (larg + 24f * density)).toInt().coerceIn(2, 6)
             for (k in 0 until nEt) {
                 val f = k / (nEt - 1f)
-                val lab = times[0].plusSeconds(((start + (end - start) * f) * 60).toLong())
+                val lab = Tempo.legale(times[0].plusSeconds(((start + (end - start) * f) * 60).toLong()))
                 val tt = measurer.measure(lab.format(labelFmt), labelStyle)
                 val lx = (l + w * f - tt.size.width / 2).coerceIn(l, size.width - tt.size.width)
                 drawText(tt, topLeft = Offset(lx, tp + h + 5f * density))
@@ -235,7 +236,7 @@ fun SensorChart(
                 drawLine(cs.onSurfaceVariant, Offset(sx, tp), Offset(sx, tp + h), 1.5f)
                 series.forEach { s -> s.values.getOrNull(selected)?.let { if (s.kind != ChartSeries.Kind.BAR) drawCircle(s.color, 4f * density, Offset(sx, y(it))) } }
                 val lines = buildList {
-                    add(times[selected].format(labelFmt))
+                    add(Tempo.legale(times[selected]).format(labelFmt))
                     series.filter { it.inTooltip }.forEach { s ->
                         s.values.getOrNull(selected)?.let { add("${s.label}: ${"%.${decimals}f".format(java.util.Locale.ITALY, it)}") }
                     }

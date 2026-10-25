@@ -240,8 +240,8 @@ object Api {
     // ── Parsing storico stazione (XML ARPAV) ─────────────────────────────────
 
     /**
-     * Gli ISTANTE dei dati sono già in ora locale italiana (verificato: l'ultima misura cade
-     * sempre nell'ultima mezz'ora), nonostante la nota "orario solare" dell'XML.
+     * Gli ISTANTE dei dati sono già in ora legale italiana (la converte il server, che manda anche
+     * SOLARE: l'ora solare ARPAV, senza ripetizioni, per ordinare e fare i conti).
      */
     private val arpavTime = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
 
@@ -252,6 +252,7 @@ object Api {
         var type = ""; var nome = ""; var unita = ""
         var punti = mutableListOf<Punto>()
         var istante: LocalDateTime? = null
+        var solare: LocalDateTime? = null
         var text = StringBuilder()
         var inSensore = false
         while (p.next() != XmlPullParser.END_DOCUMENT) {
@@ -260,9 +261,12 @@ object Api {
                     text = StringBuilder()
                     when (p.name) {
                         "SENSORE" -> { inSensore = true; type = ""; nome = ""; unita = ""; punti = mutableListOf() }
-                        "DATI" -> istante = runCatching {
-                            LocalDateTime.parse(p.getAttributeValue(null, "ISTANTE"), arpavTime)
-                        }.getOrNull()
+                        "DATI" -> {
+                            istante = runCatching { LocalDateTime.parse(p.getAttributeValue(null, "ISTANTE"), arpavTime) }.getOrNull()
+                            // SOLARE arriva dal server; con un server vecchio si ricava dall'ora legale
+                            solare = p.getAttributeValue(null, "SOLARE")?.let { runCatching { LocalDateTime.parse(it, arpavTime) }.getOrNull() }
+                                ?: istante?.let { Tempo.aSolare(it) }
+                        }
                     }
                 }
                 XmlPullParser.TEXT -> text.append(p.text)
@@ -270,8 +274,8 @@ object Api {
                     "TYPE" -> type = text.toString().trim()
                     "PARAMNM" -> nome = text.toString().trim()
                     "UNITNM" -> unita = text.toString().trim()
-                    "VM" -> istante?.let { punti += Punto(it, text.toString().trim().replace(',', '.').toDoubleOrNull()) }
-                    "SENSORE" -> { inSensore = false; if (type.isNotEmpty()) out += Serie(type, nome, unita, punti.sortedBy { it.istante }) }
+                    "VM" -> istante?.let { punti += Punto(it, text.toString().trim().replace(',', '.').toDoubleOrNull(), solare ?: it) }
+                    "SENSORE" -> { inSensore = false; if (type.isNotEmpty()) out += Serie(type, nome, unita, punti.sortedBy { it.solare }) }
                 }
             }
         }

@@ -26,16 +26,16 @@ object Trend {
         for (s in serie) {
             val last = s.ultimo ?: continue
             val v = last.valore ?: continue
-            val oraPrima = last.istante.minus(Duration.ofMinutes(60))
+            val oraPrima = last.solare.minus(Duration.ofMinutes(60))
             if (s.type == "PREC") {
-                val somma = s.punti.filter { it.istante > oraPrima && it.istante <= last.istante }.sumOf { it.valore ?: 0.0 }
+                val somma = s.punti.filter { it.solare > oraPrima && it.solare <= last.solare }.sumOf { it.valore ?: 0.0 }
                 if (somma >= PIOGGIA_ORARIA) out[s.type] = Salita(somma, s.unita)
                 continue
             }
             val soglia = salitaOraria[s.type] ?: continue
             // il dato più vicino a un'ora prima (ARPAV pubblica ogni 10-30 minuti)
-            val prima = s.punti.lastOrNull { it.istante <= oraPrima && it.valore != null }
-                ?.takeIf { Duration.between(it.istante, oraPrima).toMinutes() <= 30 } ?: continue
+            val prima = s.punti.lastOrNull { it.solare <= oraPrima && it.valore != null }
+                ?.takeIf { Duration.between(it.solare, oraPrima).toMinutes() <= 30 } ?: continue
             val delta = v - prima.valore!!
             if (delta >= soglia) out[s.type] = Salita(delta, s.unita)
         }

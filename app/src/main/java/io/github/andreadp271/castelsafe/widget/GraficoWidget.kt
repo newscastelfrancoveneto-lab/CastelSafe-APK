@@ -126,7 +126,7 @@ private fun disegna(scheda: Scheda?, sid: String, stazione: String, etichetta: S
     val c = Canvas(bmp)
     c.scale(k, k)
     val grigio = 0xFF94A3B8.toInt()
-    val pt = scheda?.serie?.punti?.filter { it.valore != null && it.istante >= LocalDateTime.now().minusHours(24) } ?: emptyList()
+    val pt = scheda?.serie?.punti?.filter { it.valore != null && it.solare >= io.github.andreadp271.castelsafe.data.Tempo.adesso().minusHours(24) } ?: emptyList()
     val ult = pt.lastOrNull()?.valore
     val liv = if (scheda == null) io.github.andreadp271.castelsafe.data.Level.NESSUNO else Stations.level(sid, scheda.type, ult)
     val col = when {
@@ -169,9 +169,9 @@ private fun disegna(scheda: Scheda?, sid: String, stazione: String, etichetta: S
     val pad = if (barre) 0.0 else (hi - lo) * 0.1
     lo -= pad; hi += pad
     val l = m; val r = w - m; val top = 110f; val bot = h - 54f
-    val t0 = pt.first().istante
-    val span = java.time.Duration.between(t0, pt.last().istante).toMillis().coerceAtLeast(1)
-    fun x(i: Int) = l + (r - l) * java.time.Duration.between(t0, pt[i].istante).toMillis() / span.toFloat()
+    val t0 = pt.first().solare
+    val span = java.time.Duration.between(t0, pt.last().solare).toMillis().coerceAtLeast(1)
+    fun x(i: Int) = l + (r - l) * java.time.Duration.between(t0, pt[i].solare).toMillis() / span.toFloat()
     fun y(v: Double) = bot - (bot - top) * ((v - lo) / (hi - lo)).toFloat()
     if (barre) {
         val fp = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = col }

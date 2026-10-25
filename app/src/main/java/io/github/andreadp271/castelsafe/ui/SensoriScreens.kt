@@ -56,6 +56,7 @@ import androidx.compose.ui.window.DialogProperties
 import io.github.andreadp271.castelsafe.data.Level
 import io.github.andreadp271.castelsafe.data.Repo
 import io.github.andreadp271.castelsafe.data.Scheda
+import io.github.andreadp271.castelsafe.data.Tempo
 import io.github.andreadp271.castelsafe.data.SensorData
 import io.github.andreadp271.castelsafe.data.Serie
 import io.github.andreadp271.castelsafe.data.Soglie
@@ -152,7 +153,8 @@ private fun f(v: Double?, d: Int) = if (v == null) "—" else "%.${d}f".format(L
 
 private fun buildModel(st: Station, s: Scheda, all: List<Serie>): ChartModel {
     val punti = s.serie.punti
-    val times = punti.map { it.istante }
+    // asse e calcoli in ora solare (senza ripetizioni); l'ora legale si vede solo nei testi
+    val times = punti.map { it.solare }
     val values = punti.map { it.valore }
     val unit = s.unita
     val color = Color(SensorData.colorFor(s.type, s.serie.nome))
@@ -172,7 +174,7 @@ private fun buildModel(st: Station, s: Scheda, all: List<Serie>): ChartModel {
             ),
             emptyList(), false,
             listOf("Ora", "Velocità ($unit)", "Provenienza"),
-            punti.indices.reversed().filter { values[it] != null }.map { i -> listOf(times[i].format(rowFmt), "${f(values[i], 1)} $unit", SensorData.windDir(dir[i])) to Level.NESSUNO },
+            punti.indices.reversed().filter { values[it] != null }.map { i -> listOf(Tempo.legale(times[i]).format(rowFmt), "${f(values[i], 1)} $unit", SensorData.windDir(dir[i])) to Level.NESSUNO },
             arrows = dir, tooltipExtra = { i -> dir.getOrNull(i)?.let { "Provenienza: ${SensorData.windDir(it)}" } }, decimals = 1,
         )
     }
@@ -201,7 +203,7 @@ private fun buildModel(st: Station, s: Scheda, all: List<Serie>): ChartModel {
             ),
             listOf("Precipitazione ($unit)" to Color(0xFF2563EB), line.label to line.color), false,
             listOf("Data / Ora", "Precipitazione ($unit)", if (corr != null) "Accumulo 24h corretto" else "Accumulo 24h"),
-            times.indices.reversed().map { i -> listOf(times[i].format(rowFmt), f(bars[i], 2), f(accShown[i], 2)) to Level.NESSUNO },
+            times.indices.reversed().map { i -> listOf(Tempo.legale(times[i]).format(rowFmt), f(bars[i], 2), f(accShown[i], 2)) to Level.NESSUNO },
             note = if (corr != null) "Accumulo corretto per l'evaporazione (FAO-56 Penman-Monteith) calcolata da temperatura, umidità, radiazione e vento della stazione." else null,
         )
     }
@@ -232,7 +234,7 @@ private fun buildModel(st: Station, s: Scheda, all: List<Serie>): ChartModel {
         ),
         series.drop(1).map { it.label to it.color }, true,
         listOf("Data / Ora", "${s.serie.nome.ifBlank { s.label }} ($unit)"),
-        times.indices.reversed().map { i -> listOf(times[i].format(rowFmt), f(values[i], dec)) to lvl(values[i]) },
+        times.indices.reversed().map { i -> listOf(Tempo.legale(times[i]).format(rowFmt), f(values[i], dec)) to lvl(values[i]) },
         decimals = dec,
     )
 }

@@ -45,7 +45,7 @@ object SensorData {
             when {
                 vel >= 0 && dir >= 0 && i == minOf(vel, dir) -> {
                     val v = usable[vel]; val d = usable[dir]
-                    out += Scheda("VENTO", "Vento", v.unita, v, d.punti.filter { it.valore != null }.associate { it.istante to it.valore!! })
+                    out += Scheda("VENTO", "Vento", v.unita, v, d.punti.filter { it.valore != null }.associate { it.solare to it.valore!! })
                 }
                 vel >= 0 && dir >= 0 && (i == vel || i == dir) -> {}
                 else -> out += Scheda(s.type, tabLabels[s.type] ?: s.nome.ifBlank { Stations.label(s.type) }, s.unita, s)
@@ -154,7 +154,7 @@ object SensorData {
     /** Serie di supporto allineata agli istanti della pioggia (null se manca il dato). */
     fun support(all: List<Serie>, t: List<LocalDateTime>, vararg match: String): List<Double?>? {
         val s = all.firstOrNull { se -> val txt = "${se.type} ${se.nome} ${se.unita}".lowercase(); match.any { it in txt } } ?: return null
-        val m = s.punti.associate { it.istante to it.valore }
+        val m = s.punti.associate { it.solare to it.valore }
         return t.map { m[it] }
     }
 

@@ -1,0 +1,1 @@
+- Cambio d'ora: i dati dei sensori restano in ordine e le finestre di 24 ore sono esatte, anche nell'ora che si ripete a ottobre

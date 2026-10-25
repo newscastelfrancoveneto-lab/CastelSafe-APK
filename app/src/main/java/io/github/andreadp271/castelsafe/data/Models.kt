@@ -70,7 +70,8 @@ data class Serie(val type: String, val nome: String, val unita: String, val punt
     val ultimo: Punto? get() = punti.lastOrNull { it.valore != null }
 }
 
-data class Punto(val istante: LocalDateTime, val valore: Double?)
+/** [istante] è l'ora legale (da mostrare); [solare] non si ripete mai (per ordinare e fare i conti). */
+data class Punto(val istante: LocalDateTime, val valore: Double?, val solare: LocalDateTime = istante)
 
 // ── Avvisi e chiusure (/api/closures) ────────────────────────────────────────
 
