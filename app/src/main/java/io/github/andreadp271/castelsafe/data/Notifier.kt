@@ -277,8 +277,8 @@ object Notifier {
     private const val CH_CRITICO = "critico"
     private const val CH_SERVIZIO = "servizio"
     private const val CH_AGGIORNAMENTI = "aggiornamenti"
-    /** GitHub concede 60 richieste l'ora per rete: basta guardare ogni 6 ore. */
-    private const val AGG_OGNI_MS = 6 * 3600_000L
+    /** GitHub concede 60 richieste l'ora per rete: una all'ora è ampiamente nel limite. */
+    private const val AGG_OGNI_MS = 3600_000L
     private const val WORK = "feed"
     /** Una notifica più vecchia di così (telefono spento, senza rete) entra in cronologia ma non suona. */
     private const val MAX_AGE_S = 24 * 3600L
@@ -395,7 +395,7 @@ object Notifier {
         }
     }
 
-    /** Ogni 6 ore guarda se su GitHub c'è una versione nuova e la notifica una volta sola. */
+    /** Ogni ora guarda se su GitHub c'è una versione nuova e la notifica una volta sola. */
     suspend fun controllaAggiornamento(ctx: Context) {
         val s = NotifySettings(ctx)
         val ora = System.currentTimeMillis()
@@ -419,8 +419,11 @@ object Notifier {
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
             .build()
-        runCatching { NotificationManagerCompat.from(ctx).notify(CH_AGGIORNAMENTI, 0, n) }
-        s.aggiornamentoNotificato = r.version
+        // il canale può non esserci ancora (app aggiornata ma non riaperta): senza, Android scarta la notifica
+        createChannels(ctx)
+        val nm = NotificationManagerCompat.from(ctx)
+        if (!nm.areNotificationsEnabled()) return
+        if (runCatching { nm.notify(CH_AGGIORNAMENTI, 0, n) }.isSuccess) s.aggiornamentoNotificato = r.version
     }
 
     fun routeFor(item: FeedItem): String {
@@ -636,6 +639,8 @@ object Notifier {
 class FeedWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         val s = NotifySettings(applicationContext)
+        // dopo un aggiornamento il lavoro riparte prima che l'app venga aperta: i canali vanno creati qui
+        Notifier.createChannels(applicationContext)
         // i widget si aggiornano anche se il registro notifiche non risponde, ma non a ogni minuto
         val ora = System.currentTimeMillis()
         if (ora - ultimoWidget > 5 * 60_000L) {

@@ -1,0 +1,1 @@
+Corretto l'avviso di nuove versioni: ora arriva anche se l'app non è stata riaperta dopo l'ultimo aggiornamento, e il controllo è ogni ora
