@@ -244,6 +244,7 @@ fun NotificheScreen(nav: Nav) {
                         Column(Modifier.weight(1f)) {
                             Text("Nuove versioni dell'app")
                             Muted("Una notifica quando su GitHub esce un aggiornamento di CastelSafe.")
+                            if (s.esitoAgg.isNotBlank()) Muted("Ultimo controllo — " + s.esitoAgg)
                         }
                         Switch(s.avvisoAggiornamenti, { upd { s.avvisoAggiornamenti = it; if (it) s.ultimoControlloAgg = 0 } })
                     }

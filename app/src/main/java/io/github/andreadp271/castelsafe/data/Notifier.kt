@@ -236,6 +236,10 @@ class NotifySettings(context: Context) {
         get() = p.getLong("ultimoControlloAgg", 0)
         set(v) = p.edit().putLong("ultimoControlloAgg", v).apply()
     /** Versione già notificata: la stessa non si ripete. */
+    /** Esito dell'ultimo controllo degli aggiornamenti, mostrato nella schermata Notifiche. */
+    var esitoAgg: String
+        get() = p.getString("esitoAgg", "") ?: ""
+        set(v) = p.edit().putString("esitoAgg", v).apply()
     var aggiornamentoNotificato: String?
         get() = p.getString("aggiornamentoNotificato", null)
         set(v) = p.edit().putString("aggiornamentoNotificato", v).apply()
@@ -277,8 +281,8 @@ object Notifier {
     private const val CH_CRITICO = "critico"
     private const val CH_SERVIZIO = "servizio"
     private const val CH_AGGIORNAMENTI = "aggiornamenti"
-    /** GitHub concede 60 richieste l'ora per rete: una all'ora è ampiamente nel limite. */
-    private const val AGG_OGNI_MS = 3600_000L
+    /** GitHub concede 60 richieste l'ora per rete: una ogni 15 minuti sono 4 richieste l'ora. */
+    private const val AGG_OGNI_MS = 14 * 60_000L
     private const val WORK = "feed"
     /** Una notifica più vecchia di così (telefono spento, senza rete) entra in cronologia ma non suona. */
     private const val MAX_AGE_S = 24 * 3600L
@@ -395,14 +399,18 @@ object Notifier {
         }
     }
 
-    /** Ogni ora guarda se su GitHub c'è una versione nuova e la notifica una volta sola. */
+    /** Ogni 15 minuti guarda se su GitHub c'è una versione nuova e la notifica una volta sola. */
     suspend fun controllaAggiornamento(ctx: Context) {
         val s = NotifySettings(ctx)
         val ora = System.currentTimeMillis()
-        if (!s.avvisoAggiornamenti || !canNotify(ctx) || ora - s.ultimoControlloAgg < AGG_OGNI_MS) return
-        val r = Updater.latest()
+        val quando = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.ITALY).format(java.util.Date(ora))
+        if (!s.avvisoAggiornamenti) { s.esitoAgg = "Avviso disattivato"; return }
+        if (!canNotify(ctx)) { s.esitoAgg = "$quando: permesso notifiche negato"; return }
+        if (ora - s.ultimoControlloAgg < AGG_OGNI_MS) return
+        val r = try { Updater.latest() } catch (e: Exception) { s.esitoAgg = "$quando: GitHub non raggiungibile (${e.javaClass.simpleName})"; throw e }
         s.ultimoControlloAgg = ora
-        if (!Updater.isNewer(r.version) || r.version == s.aggiornamentoNotificato) return
+        if (!Updater.isNewer(r.version)) { s.esitoAgg = "$quando: nessuna novità (ultima ${r.version})"; return }
+        if (r.version == s.aggiornamentoNotificato) { s.esitoAgg = "$quando: ${r.version} già notificata"; return }
         val intent = Intent(ctx, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra(EXTRA_ROUTE, "aggiornamenti")
@@ -422,8 +430,9 @@ object Notifier {
         // il canale può non esserci ancora (app aggiornata ma non riaperta): senza, Android scarta la notifica
         createChannels(ctx)
         val nm = NotificationManagerCompat.from(ctx)
-        if (!nm.areNotificationsEnabled()) return
-        if (runCatching { nm.notify(CH_AGGIORNAMENTI, 0, n) }.isSuccess) s.aggiornamentoNotificato = r.version
+        if (!nm.areNotificationsEnabled()) { s.esitoAgg = "$quando: notifiche dell'app disattivate"; return }
+        if (runCatching { nm.notify(CH_AGGIORNAMENTI, 0, n) }.isSuccess) { s.aggiornamentoNotificato = r.version; s.esitoAgg = "$quando: notificata ${r.version}" }
+        else s.esitoAgg = "$quando: invio della notifica non riuscito"
     }
 
     fun routeFor(item: FeedItem): String {

@@ -1,0 +1,1 @@
+Avvisi di aggiornamento: controllo ogni 15 minuti e, nella schermata Notifiche, l'esito dell'ultimo controllo
