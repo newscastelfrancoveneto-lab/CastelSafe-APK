@@ -196,7 +196,7 @@ private fun buildModel(st: Station, s: Scheda, all: List<Serie>): ChartModel {
             listOf(ChartSeries("Precipitazione ($unit)", bars, Color(0xFF2563EB), ChartSeries.Kind.BAR), line),
             0.0, if (top > 0) top * 1.15 else 1.0, "Precipitazione / Accumulo ($unit)",
             listOf(
-                Stat(f(bars.lastOrNull() ?: 0.0, 2), "Ultimo step ($unit)"),
+                Stat(values.lastOrNull()?.let { f(bars.last(), 2) } ?: "—", "Ultimo step ($unit)"),
                 Stat(f(accShown.lastOrNull(), 2), if (corr != null) "Accumulo 24h corretto ($unit)" else "Accumulo 24h ($unit)"),
                 Stat(f(acc.maxOrNull(), 2), "Picco 24h ($unit)"),
                 Stat(f(bars.sum(), 2), "Totale ($unit)"),

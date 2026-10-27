@@ -1,0 +1,1 @@
+Pioggia: se l'ultimo dato non è ancora disponibile, "Ultimo step" mostra — invece di 0,00
