@@ -242,6 +242,13 @@ fun NotificheScreen(nav: Nav) {
                     }
                     Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
+                            Text("Avviso se i dati si fermano")
+                            Muted("Una notifica quando il server non risponde da 45 minuti o una stazione non pubblica più dati nuovi.")
+                        }
+                        Switch(s.avvisoDatiFermi, { upd { s.avvisoDatiFermi = it } })
+                    }
+                    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
                             Text("Nuove versioni dell'app")
                             Muted("Una notifica quando su GitHub esce un aggiornamento di CastelSafe.")
                             if (s.esitoAgg.isNotBlank()) Muted("Ultimo controllo — " + s.esitoAgg)

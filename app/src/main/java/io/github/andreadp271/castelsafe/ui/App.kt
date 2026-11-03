@@ -32,10 +32,12 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.res.painterResource
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import io.github.andreadp271.castelsafe.R
 import io.github.andreadp271.castelsafe.data.Chiusura
 import io.github.andreadp271.castelsafe.data.Repo
@@ -144,7 +146,11 @@ fun App(pendingRoute: String?, onRouteHandled: () -> Unit) {
             composable("allerta") { AllertaScreen(nav) }
             composable("guida") { GuidaScreen(nav) }
             composable("sensori") { SensoriScreen(nav) }
-            composable("stazione/{id}") { StazioneScreen(nav, it.arguments?.getString("id").orEmpty()) }
+            // "dato" (facoltativo): la scheda da aprire, es. il dato che il carosello della Home mostrava
+            composable(
+                "stazione/{id}?dato={dato}",
+                arguments = listOf(navArgument("dato") { type = NavType.StringType; nullable = true; defaultValue = null }),
+            ) { StazioneScreen(nav, it.arguments?.getString("id").orEmpty(), it.arguments?.getString("dato")) }
             composable("mappa") { MapScreen(nav) }
             composable("avvisi") { AvvisiScreen(nav) }
             composable("altro") { SettingsScreen(nav) }

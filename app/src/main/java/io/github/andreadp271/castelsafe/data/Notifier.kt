@@ -228,6 +228,22 @@ class NotifySettings(context: Context) {
         get() = p.getString("lastCheckError", null)
         set(v) = p.edit().putString("lastCheckError", v).apply()
 
+    // ── dati fermi e stazioni preferite ──────────────────────────────────────
+    var avvisoDatiFermi: Boolean
+        get() = p.getBoolean("avvisoDatiFermi", true)
+        set(v) = p.edit().putBoolean("avvisoDatiFermi", v).apply()
+    /** Avviso "server non raggiungibile" già inviato: si riarma al primo controllo riuscito. */
+    var fermoServer: Boolean
+        get() = p.getBoolean("fermoServer", false)
+        set(v) = p.edit().putBoolean("fermoServer", v).apply()
+    /** Stazioni già segnalate come ferme: una notifica per episodio. */
+    var stazioniFerme: Set<String>
+        get() = p.getStringSet("stazioniFerme", emptySet()).orEmpty().toSet()
+        set(v) = p.edit().putStringSet("stazioniFerme", v).apply()
+    var preferite: Set<String>
+        get() = p.getStringSet("preferite", emptySet()).orEmpty().toSet()
+        set(v) = p.edit().putStringSet("preferite", v).apply()
+
     // ── nuove versioni dell'app ──────────────────────────────────────────────
     var avvisoAggiornamenti: Boolean
         get() = p.getBoolean("avvisoAggiornamenti", true)
@@ -281,6 +297,9 @@ object Notifier {
     private const val CH_CRITICO = "critico"
     private const val CH_SERVIZIO = "servizio"
     private const val CH_AGGIORNAMENTI = "aggiornamenti"
+    private const val CH_FERMI = "dati_fermi"
+    /** Senza un controllo riuscito per tanto tempo il server si considera fermo. */
+    private const val SERVER_FERMO_MIN = 45L
     /** GitHub concede 60 richieste l'ora per rete: una ogni 15 minuti sono 4 richieste l'ora. */
     private const val AGG_OGNI_MS = 14 * 60_000L
     private const val WORK = "feed"
@@ -309,6 +328,9 @@ object Notifier {
         }
         list += NotificationChannel(CH_AGGIORNAMENTI, "Aggiornamenti dell'app", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Nuova versione di CastelSafe disponibile"
+        }
+        list += NotificationChannel(CH_FERMI, "Dati fermi", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "Server non raggiungibile o stazione che non aggiorna più i dati"
         }
         nm.createNotificationChannels(list)
     }
@@ -433,6 +455,54 @@ object Notifier {
         if (!nm.areNotificationsEnabled()) { s.esitoAgg = "$quando: notifiche dell'app disattivate"; return }
         if (runCatching { nm.notify(CH_AGGIORNAMENTI, 0, n) }.isSuccess) { s.aggiornamentoNotificato = r.version; s.esitoAgg = "$quando: notificata ${r.version}" }
         else s.esitoAgg = "$quando: invio della notifica non riuscito"
+    }
+
+    private fun avvisoFermo(ctx: Context, tag: String, titolo: String, testo: String) {
+        if (!canNotify(ctx)) return
+        createChannels(ctx)
+        val intent = Intent(ctx, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .putExtra(EXTRA_ROUTE, "sensori")
+        val pi = PendingIntent.getActivity(ctx, tag.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val n = NotificationCompat.Builder(ctx, CH_FERMI)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFF8D021F.toInt())
+            .setContentTitle(titolo)
+            .setContentText(testo)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(testo))
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .build()
+        runCatching { NotificationManagerCompat.from(ctx).notify(tag, 0, n) }
+    }
+
+    /** Il controllo è fallito: dopo [SERVER_FERMO_MIN] minuti senza successi avvisa una sola volta. */
+    fun controllaServerFermo(ctx: Context, s: NotifySettings) {
+        if (!s.avvisoDatiFermi || s.fermoServer || s.lastCheck == 0L) return
+        val minuti = (System.currentTimeMillis() - s.lastCheck) / 60_000
+        if (minuti < SERVER_FERMO_MIN) return
+        avvisoFermo(ctx, "fermo-server", "Server non raggiungibile",
+            "Nessun controllo riuscito da ${minuti / 60} h ${minuti % 60} min: i dati e le notifiche potrebbero essere fermi.")
+        s.fermoServer = true
+    }
+
+    /** Controllo riuscito: riarma l'avviso del server e segnala le stazioni che non aggiornano più i dati. */
+    suspend fun controllaSensoriFermi(ctx: Context, s: NotifySettings) {
+        s.fermoServer = false
+        if (!s.avvisoDatiFermi) return
+        Repo.init(ctx)
+        runCatching { Repo.loadMonitor(false) }
+        val res = Repo.monitor.value
+        val dati = res.data ?: return
+        if (res.error != null) return
+        val ferme = Stations.all.filter { it.monitored && dati[it.id]?.stale == true }
+        for (st in ferme.filter { it.id !in s.stazioniFerme }) {
+            val eta = dati[st.id]?.etaMinuti
+            avvisoFermo(ctx, "fermo-${st.id}", "${st.name}: dati fermi",
+                "La stazione non pubblica dati nuovi" + (eta?.let { " da $it minuti" } ?: "") + ". I valori mostrati potrebbero non essere attuali.")
+        }
+        s.stazioniFerme = ferme.map { it.id }.toSet()
     }
 
     fun routeFor(item: FeedItem): String {
@@ -661,10 +731,12 @@ class FeedWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
             Notifier.check(applicationContext)
             s.lastCheck = System.currentTimeMillis()
             s.lastCheckError = null
+            runCatching { Notifier.controllaSensoriFermi(applicationContext, s) }
             Notifier.pianifica(applicationContext, s)
             Result.success()
         } catch (e: Exception) {
             s.lastCheckError = Repo.errorText(e)
+            runCatching { Notifier.controllaServerFermo(applicationContext, s) }
             runCatching { Notifier.pianifica(applicationContext, s) }
             if (runAttemptCount < 2) Result.retry() else Result.success()
         }

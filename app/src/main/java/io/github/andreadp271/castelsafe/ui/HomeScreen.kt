@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import io.github.andreadp271.castelsafe.data.Serie
 import io.github.andreadp271.castelsafe.data.Station
 import io.github.andreadp271.castelsafe.data.StatoStazione
+import io.github.andreadp271.castelsafe.data.NotifySettings
 import io.github.andreadp271.castelsafe.data.Trend
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.clickable
@@ -43,7 +44,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AcUnit
+import androidx.compose.material.icons.filled.Grain
 import androidx.compose.material.icons.filled.Air
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.FilterChip
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Flood
 import androidx.compose.material.icons.filled.Landslide
@@ -94,6 +102,8 @@ fun HomeScreen(nav: Nav) {
     val chiusure by Repo.chiusure.collectAsState()
     val meteo by Repo.meteo.collectAsState()
     var refreshing by remember { mutableStateOf(false) }
+    val notifySettings = remember { NotifySettings(ctx) }
+    var preferite by remember { mutableStateOf(notifySettings.preferite) }
 
     LaunchedEffect(Unit) {
         // storico delle stazioni: serve a riconoscere i dati in rapida salita
@@ -146,10 +156,14 @@ fun HomeScreen(nav: Nav) {
                 item { SectionTitle("Sensori ARPAV") }
                 item {
                     Panel(padding = 0.dp) {
-                        Stations.all.filter { it.monitored }.forEachIndexed { i, st ->
+                        // le preferite (★) vanno in cima
+                        Stations.all.filter { it.monitored }.sortedByDescending { it.id in preferite }.forEachIndexed { i, st ->
                             if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             val serie by Repo.stazione(st.id).collectAsState()
-                            SensoreHomeRow(st, monitor.data?.get(st.id), serie.data) { nav.tab("sensori"); nav.go("stazione/${st.id}") }
+                            SensoreHomeRow(
+                                st, monitor.data?.get(st.id), serie.data, st.id in preferite,
+                                onPreferita = { preferite = (if (st.id in preferite) preferite - st.id else preferite + st.id).also { notifySettings.preferite = it } },
+                            ) { dato -> nav.tab("sensori"); nav.go("stazione/${st.id}?dato=$dato") }
                         }
                     }
                 }
@@ -234,7 +248,7 @@ private fun AllertaCard(a: Allerta?, loading: Boolean, onClick: () -> Unit) {
                 Row(verticalAlignment = Alignment.Bottom) {
                     androidx.compose.foundation.layout.Spacer(Modifier.weight(0.24f))
                     rischiSimboli.forEach { (icona, nome) ->
-                        Box(Modifier.weight(0.152f), contentAlignment = Alignment.Center) {
+                        Box(Modifier.weight(0.76f / rischiSimboli.size), contentAlignment = Alignment.Center) {
                             Icon(icona, nome, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
                         }
                     }
@@ -254,6 +268,8 @@ private val rischiSimboli = listOf(
     Icons.Filled.Thunderstorm to "Temporali",
     Icons.Filled.Air to "Vento",
     Icons.Filled.Thermostat to "Ondate di calore",
+    Icons.Filled.Grain to "Neve",
+    Icons.Filled.AcUnit to "Ghiaccio al suolo",
 )
 
 @Composable
@@ -261,7 +277,7 @@ private fun GiornoRow(label: String, g: AllertaGiorno?) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(0.24f), fontWeight = FontWeight.SemiBold)
         rischiSimboli.indices.forEach { i ->
-            Box(Modifier.weight(0.152f), contentAlignment = Alignment.Center) {
+            Box(Modifier.weight(0.76f / rischiSimboli.size), contentAlignment = Alignment.Center) {
                 LevelDot(g?.rischi?.getOrNull(i)?.second ?: Level.NESSUNO, 18.dp)
             }
         }
@@ -313,62 +329,225 @@ fun AllertaScreen(nav: Nav) {
     }
 }
 
-private val guida = listOf(
-    "Colori delle allerte" to listOf(
-        "" to "I colori indicano un livello crescente di criticità attesa: verde (nessuna criticità), gialla, arancione e rossa. " +
-            "La valutazione riguarda i rischi idraulico, idrogeologico e, quando previsto, i temporali. Per il rischio temporali il livello massimo previsto è l'arancione.",
+/** Una fase della guida (prima / durante / dopo) con i gesti da fare, uno per riga. */
+private data class Fase(val titolo: String, val colore: Color, val passi: List<String>)
+
+private data class Rischio(val nome: String, val icona: androidx.compose.ui.graphics.vector.ImageVector, val sintesi: String, val fasi: List<Fase>)
+
+private val verdeFase = Color(0xFF22C55E)
+private val gialloFase = Color(0xFFFACC15)
+private val rossoFase = Color(0xFFDC2626)
+private val bluFase = Color(0xFF3B82F6)
+
+private val rischi = listOf(
+    Rischio(
+        "Alluvione", Icons.Filled.Flood, "Fiumi, torrenti e piogge intense: l'acqua può salire in pochi minuti.",
+        listOf(
+            Fase("Con l'allerta", gialloFase, listOf(
+                "Tieni attive le notifiche dell'app e controlla il bollettino.",
+                "Non dormire né stare nei piani interrati o seminterrati.",
+                "Metti al sicuro documenti e farmaci ai piani alti.",
+                "Controlla nell'app le strade chiuse prima di partire.",
+                "Non rischiare per salvare l'auto o altri beni.",
+            )),
+            Fase("Durante", rossoFase, listOf(
+                "Sali ai piani alti, chiudi porte e finestre.",
+                "Chiudi il gas e stacca la corrente solo se sei all'asciutto.",
+                "Non usare l'ascensore.",
+                "Non attraversare strade allagate: bastano 20–30 cm d'acqua per trascinare auto e persone.",
+                "Raggiungi le aree di attesa indicate dal Comune e segui solo le autorità.",
+            )),
+            Fase("Dopo", verdeFase, listOf(
+                "Rientra solo dopo il cessato allarme.",
+                "Fai controllare gas, luce e acqua prima di usarli.",
+                "Non bere l'acqua del rubinetto e butta i cibi bagnati.",
+                "Occhio a voragini, cavi scoperti e detriti.",
+                "Segnala i danni al Comune.",
+            )),
+        ),
     ),
-    "Alluvione (rischio idraulico e idrogeologico)" to listOf(
-        "Durante l'allerta" to "Leggi il bollettino e tieni attive le notifiche dell'app per ricevere gli allarmi di torrenti e precipitazioni. Segui ogni indicazione ufficiale del Comune. " +
-            "Non dormire né soggiornare nei piani seminterrati. Proteggi i locali al piano strada e chiudi porte di cantine e garage solo se non ti esponi a pericoli. " +
-            "Se devi viaggiare, controlla nell'app le chiusure stradali. Valuta bene se mettere al sicuro l'auto o altri beni: può essere pericoloso.",
-        "Durante l'alluvione" to "Se sei in casa, spostati ai piani alti e chiudi porte e finestre. Chiudi il gas e disattiva l'impianto elettrico solo se non rischi di bagnarti. " +
-            "Non usare ascensori. Non cercare strade \"alternative\": 20–30 cm d'acqua bastano a trascinare auto e pedoni. " +
-            "Allontanati dalle zone allagate verso aree elevate o le aree di attesa indicate dal Comune. Segui solo le autorità.",
-        "Dopo l'alluvione" to "Attendi il cessato allarme prima di rientrare. Fai verificare gas, elettricità e acqua; non bere dal rubinetto e getta i cibi contaminati. " +
-            "Attenzione a voragini, cavi scoperti, detriti ed edifici instabili. Segnala i danni al Comune.",
+    Rischio(
+        "Temporali", Icons.Filled.Thunderstorm, "Fulmini, grandine e raffiche improvvise.",
+        listOf(
+            Fase("Prima", gialloFase, listOf(
+                "Rimanda gite, sport e lavori all'aperto o in quota.",
+                "Segui l'evoluzione del meteo.",
+            )),
+            Fase("Durante", rossoFase, listOf(
+                "All'aperto cerca riparo in un edificio o in auto, finestrini chiusi.",
+                "Stai lontano da alberi isolati, pali, tralicci e specchi d'acqua.",
+                "In casa chiudi porte e finestre e scollega gli apparecchi sensibili.",
+            )),
+            Fase("Dopo", verdeFase, listOf(
+                "Evita rami pericolanti e cavi elettrici a terra.",
+                "Segnala i danni al Comune.",
+            )),
+        ),
     ),
-    "Temporali forti" to listOf(
-        "Prima" to "Evita attività all'aperto (escursioni, sport, lavori in quota) e segui l'evoluzione meteo.",
-        "Durante" to "All'aperto cerca riparo in un edificio o in auto con i finestrini chiusi. Evita alberi isolati, pali, tralicci e specchi d'acqua. " +
-            "In casa chiudi porte e finestre e scollega i dispositivi sensibili. Attenzione a grandine e raffiche improvvise.",
-        "Dopo" to "Segnala i danni al Comune ed evita alberi o rami pericolanti e cavi elettrici a terra.",
+    Rischio(
+        "Vento forte", Icons.Filled.Air, "Oggetti che volano e alberi che cadono.",
+        listOf(
+            Fase("Prima", gialloFase, listOf(
+                "Metti al sicuro ombrelloni, tende e mobili da giardino.",
+                "Controlla coperture provvisorie e grondaie.",
+            )),
+            Fase("Durante", rossoFase, listOf(
+                "Non fermarti sotto alberi, impalcature, cartelloni e cornicioni.",
+                "In auto vai piano su ponti e strade esposte.",
+                "Evita gli spostamenti non necessari.",
+            )),
+            Fase("Dopo", verdeFase, listOf(
+                "Segnala alberi pericolanti e danni.",
+                "Non avvicinarti ai cavi elettrici caduti.",
+            )),
+        ),
     ),
-    "Vento forte" to listOf(
-        "Prima" to "Metti al sicuro oggetti, ombrelloni, tende e mobili da giardino; verifica coperture provvisorie e grondaie.",
-        "Durante" to "Non sostare sotto alberi, impalcature, cartelloni e cornicioni. Alla guida modera la velocità su ponti e strade esposte. Evita spostamenti non necessari.",
-        "Dopo" to "Segnala alberi pericolanti e danni; non avvicinarti a cavi elettrici caduti.",
+    Rischio(
+        "Neve e ghiaccio", Icons.Filled.AcUnit, "Strade e marciapiedi scivolosi, neve sui tetti. Il bollettino regionale ha per entrambi un'allerta a parte.",
+        listOf(
+            Fase("Prima", gialloFase, listOf(
+                "Monta le gomme invernali o tieni a bordo le catene, e prova a montarle prima di averne bisogno.",
+                "Metti scarpe antiscivolo, con suola in gomma.",
+            )),
+            Fase("Durante", rossoFase, listOf(
+                "Esci solo se serve.",
+                "In auto vai piano, usa marce basse e freno motore, niente manovre brusche.",
+                "Libera l'auto da tutta la neve, non solo dai vetri.",
+                "A piedi muoviti con cautela: il ghiaccio si forma su strade e marciapiedi.",
+                "Usa il telefono solo se necessario, per non intasare le linee di soccorso.",
+            )),
+            Fase("Dopo", verdeFase, listOf(
+                "Dopo la nevicata il ghiaccio resta: prudenza su strade e marciapiedi.",
+                "Attenzione a neve e ghiaccio che cadono da tetti, cornicioni e rami.",
+                "Con tanta neve sul tetto c'è rischio di crollo: fallo controllare.",
+            )),
+        ),
     ),
-    "Ondate di calore" to listOf(
-        "Come comportarti" to "Evita sole e uscite nelle ore più calde (12–18). Bevi molta acqua, evita alcolici, indossa abiti leggeri. " +
-            "Non lasciare mai bambini o animali in auto. Aiuta anziani, bambini e malati cronici a stare al fresco.",
-        "In caso di malore" to "Con crampi, capogiri, pelle calda e secca o confusione: sposta la persona al fresco, bagnala con acqua fresca e chiama il 112.",
+    Rischio(
+        "Caldo",Icons.Filled.Thermostat, "È uno dei rischi del bollettino regionale, con i colori dell'allerta. In più il Ministero della Salute pubblica un bollettino a parte per 27 città, con livelli da 0 a 3: il livello 3 scatta dopo 3 giorni di fila a rischio elevato. I più esposti sono anziani, bambini e malati cronici.",
+        listOf(
+            Fase("Come comportarti", gialloFase, listOf(
+                "Evita il sole e le uscite tra le 12 e le 18.",
+                "Bevi molta acqua, niente alcolici, vestiti leggeri.",
+                "Non lasciare mai bambini o animali in auto.",
+                "Aiuta chi è più fragile a stare al fresco.",
+            )),
+            Fase("Se qualcuno sta male", rossoFase, listOf(
+                "Crampi, capogiri, pelle calda e secca o confusione: portalo al fresco.",
+                "Bagnalo con acqua fresca e chiama il 112.",
+            )),
+        ),
     ),
-    "Terremoto" to listOf(
-        "Prima" to "Fissa alla parete mobili e scaffali alti. Individua i punti sicuri della casa e tieni a portata di mano torcia e radio a pile.",
-        "Durante" to "In casa riparati sotto un tavolo robusto, lontano da vetri e mobili alti; non usare ascensori. All'aperto allontanati da edifici, alberi e linee elettriche.",
-        "Dopo" to "Esci con prudenza. Se senti odore di gas chiudi il rubinetto e non accendere fiamme o interruttori. Segui solo le indicazioni ufficiali.",
+    Rischio(
+        "Terremoto", Icons.Filled.Landslide, "Non esiste un'allerta: le scosse non si prevedono. Conta farsi trovare pronti.",
+        listOf(
+            Fase("Prima", gialloFase, listOf(
+                "Fissa alla parete mobili e scaffali alti.",
+                "Individua i punti sicuri della casa.",
+                "Tieni a portata di mano torcia e radio a pile.",
+            )),
+            Fase("Durante", rossoFase, listOf(
+                "In casa riparati nel vano di una porta in un muro portante, oppure sotto un letto o un tavolo robusto, lontano da vetri e mobili alti.",
+                "Non usare l'ascensore.",
+                "All'aperto allontanati da edifici, alberi e linee elettriche.",
+            )),
+            Fase("Dopo", verdeFase, listOf(
+                "Controlla come stanno le persone vicino a te.",
+                "Esci con prudenza e raggiungi le aree di attesa del Comune.",
+                "Usa il telefono il meno possibile, per lasciare libere le linee.",
+                "Se senti odore di gas chiudi il rubinetto, niente fiamme né interruttori.",
+                "Segui solo le indicazioni ufficiali.",
+            )),
+        ),
     ),
-    "Rischio industriale" to listOf(
-        "Al suono della sirena" to "Chiuditi in un edificio, chiudi porte e finestre e spegni aerazione e condizionatori. Segui radio, TV locali e notifiche del Comune. " +
-            "Non uscire e non intasare le linee telefoniche fino al cessato allarme, salvo evacuazione disposta dalle autorità.",
+    Rischio(
+        "Industriale", Icons.Filled.Warning, "Incidente in uno stabilimento: si avverte con la sirena.",
+        listOf(
+            Fase("Al suono della sirena", rossoFase, listOf(
+                "Chiuditi in un edificio, chiudi porte e finestre.",
+                "Spegni aerazione e condizionatori.",
+                "Segui radio, TV locali e notifiche del Comune.",
+                "Non uscire e non intasare le linee telefoniche fino al cessato allarme, salvo evacuazione.",
+            )),
+        ),
     ),
+)
+
+private val kit = listOf(
+    "Torcia e radio a pile, con pile di scorta",
+    "Documenti e contanti in una busta impermeabile",
+    "Farmaci personali e kit di primo soccorso",
+    "Acqua e cibo a lunga conservazione per 2–3 giorni",
+    "Power bank carico e caricabatterie",
+    "Numeri di emergenza anche su carta",
 )
 
 @Composable
 fun GuidaScreen(nav: Nav) {
     val ctx = LocalContext.current
     var zoom by remember { mutableStateOf(false) }
+    var scelto by remember { mutableIntStateOf(0) }
     if (zoom) ZoomImage(io.github.andreadp271.castelsafe.R.drawable.infografica_allerte) { zoom = false }
+    val r = rischi[scelto]
     Column(Modifier.fillMaxSize()) {
         Bar("Cosa fare", "Guida rapida in caso di allerta", onBack = nav::back)
         LazyColumn(contentPadding = screenPadding, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
+                Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("In pericolo?", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text("Chiama subito il 112. Il resto della guida viene dopo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                        }
+                        Hspace(8.dp)
+                        Button(onClick = { nav.go("contatti") }) { Icon(Icons.Filled.Call, null); Hspace(6.dp); Text("Numeri") }
+                    }
+                }
+            }
+            item {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rischi.forEachIndexed { i, x ->
+                        FilterChip(
+                            selected = i == scelto, onClick = { scelto = i }, label = { Text(x.nome) },
+                            leadingIcon = { Icon(x.icona, null, Modifier.size(18.dp)) },
+                        )
+                    }
+                }
+            }
+            item {
+                Text(r.nome, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Muted(r.sintesi)
+            }
+            r.fasi.forEach { fase ->
+                item {
+                    Panel {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(10.dp).clip(CircleShape).background(fase.colore))
+                            Hspace(8.dp)
+                            Text(fase.titolo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+                        fase.passi.forEachIndexed { k, passo ->
+                            Row(Modifier.padding(top = 8.dp)) {
+                                Text("${k + 1}", Modifier.width(22.dp), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text(passo, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                }
+            }
+            item {
                 Panel {
-                    Text("Colori delle allerte", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Tieni pronto in casa", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    kit.forEach { Text("•  $it", Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodyMedium) }
+                }
+            }
+            // l'infografica vale solo per le allerte meteo-idro: non per caldo, terremoto e rischio industriale
+            if (r.nome in setOf("Alluvione", "Temporali", "Vento forte")) item {
+                Panel {
+                    Text("Colori delle allerte meteo-idro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
-                        "I colori dell'allerta indicano un livello crescente di criticità attesa sul territorio. La valutazione riguarda i rischi idraulico, " +
-                            "idrogeologico e, quando previsto, i temporali. Per il rischio temporali il livello massimo previsto è l'arancione.",
+                        "Verde: nessuna criticità. Gialla, arancione e rossa indicano una criticità attesa sempre più grave. " +
+                            "Si valutano i rischi idraulico, idrogeologico e, quando previsto, i temporali (per i temporali il massimo è l'arancione).",
                         Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodyMedium,
                     )
                     androidx.compose.foundation.Image(
@@ -378,17 +557,6 @@ fun GuidaScreen(nav: Nav) {
                         contentScale = androidx.compose.ui.layout.ContentScale.FillWidth,
                     )
                     Muted("Tocca per ingrandire", Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp))
-                }
-            }
-            guida.drop(1).forEach { (titolo, parti) ->
-                item {
-                    Panel {
-                        Text(titolo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        parti.forEach { (sub, testo) ->
-                            if (sub.isNotBlank()) Text(sub, Modifier.padding(top = 10.dp), fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                            Text(testo, Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
                 }
             }
             item {
@@ -438,7 +606,7 @@ fun ZoomImage(res: Int, onClose: () -> Unit) {
  * superano una soglia o salgono in fretta, il carosello si ferma su quello (o gira solo tra quelli).
  */
 @Composable
-private fun SensoreHomeRow(st: Station, stato: StatoStazione?, serie: List<Serie>?, onClick: () -> Unit) {
+private fun SensoreHomeRow(st: Station, stato: StatoStazione?, serie: List<Serie>?, preferita: Boolean, onPreferita: () -> Unit, onClick: (dato: String) -> Unit) {
     val cs = MaterialTheme.colorScheme
     val letture = stato?.sensori.orEmpty().filter { (t, l) -> t != "PRECCUM24_DRY" && t != "DVENTO" && l.valore != null }
     val tipi = letture.keys.sortedBy { if (it == st.main) 0 else 1 }
@@ -452,12 +620,16 @@ private fun SensoreHomeRow(st: Station, stato: StatoStazione?, serie: List<Serie
     val tipo = giro.getOrNull(i) ?: st.main
 
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().clickable { onClick(tipo) }.padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(st.name, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    if (preferita) "★" else "☆", color = if (preferita) cs.primary else cs.onSurfaceVariant,
+                    modifier = Modifier.clickable(onClick = onPreferita).padding(horizontal = 8.dp, vertical = 4.dp),
+                )
                 if (giro.size > 1) {
                     Hspace(8.dp)
                     giro.forEachIndexed { k, _ ->
@@ -487,6 +659,14 @@ private fun SensoreHomeRow(st: Station, stato: StatoStazione?, serie: List<Serie
             val level = Stations.level(st.id, t, l?.valore)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (t in rapide) Text("▲", color = cs.error, fontWeight = FontWeight.Bold)
+                else serie?.firstOrNull { it.type == t }?.let(Trend::direzione)?.let { d ->
+                    // sale = arancione, scende = verde, stabile = grigio
+                    Text(
+                        when (d) { 1 -> "↗"; -1 -> "↘"; else -> "→" },
+                        color = when (d) { 1 -> Color(0xFFEA580C); -1 -> Color(0xFF22C55E); else -> cs.onSurfaceVariant },
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
                 Text(fmtValue(l?.valore, l?.unita.orEmpty()), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
                 if (level != Level.NESSUNO) LevelDot(level)
             }

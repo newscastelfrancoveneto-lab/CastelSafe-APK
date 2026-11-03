@@ -265,7 +265,7 @@ private fun datoArrivato(id: String, latest: LocalDateTime?, now: LocalDateTime)
 }
 
 @Composable
-fun StazioneScreen(nav: Nav, id: String) {
+fun StazioneScreen(nav: Nav, id: String, dato: String? = null) {
     val st = Stations.byId(id) ?: return run { Column { Bar("Stazione non trovata", onBack = nav::back) } }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -274,6 +274,15 @@ fun StazioneScreen(nav: Nav, id: String) {
     val all = res.data.orEmpty()
     val schede = remember(all) { SensorData.schede(st.id, all) }
     var tab by rememberSaveable(st.id) { mutableStateOf(0) }
+    // aperta dal carosello della Home: si parte dalla scheda del dato toccato, appena le schede sono pronte
+    var datoAperto by rememberSaveable(st.id) { mutableStateOf(dato == null) }
+    LaunchedEffect(schede) {
+        if (datoAperto || schede.isEmpty()) return@LaunchedEffect
+        val k = schede.indexOfFirst { it.type == dato }.takeIf { it >= 0 }
+            ?: schede.indexOfFirst { if (dato == "VVENTO") it.isVento else dato!!.startsWith("PREC") && it.isPioggia }
+        if (k >= 0) tab = k
+        datoAperto = true
+    }
     val scheda = schede.getOrNull(tab.coerceIn(0, (schede.size - 1).coerceAtLeast(0)))
     val model = remember(scheda, all) { scheda?.let { buildModel(st, it, all) } }
     var fullscreen by remember { mutableStateOf(false) }

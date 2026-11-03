@@ -20,6 +20,17 @@ object Trend {
 
     data class Salita(val delta: Double, val unita: String)
 
+    /** Verso dell'ultima ora: 1 sale, -1 scende, 0 stabile; null se il sensore non ha soglia o manca il dato di un'ora prima. */
+    fun direzione(s: Serie): Int? {
+        val stabile = (salitaOraria[s.type] ?: return null) / 5   // sotto un quinto della salita rapida è "stabile"
+        val last = s.ultimo ?: return null
+        val oraPrima = last.solare.minus(Duration.ofMinutes(60))
+        val prima = s.punti.lastOrNull { it.solare <= oraPrima && it.valore != null }
+            ?.takeIf { Duration.between(it.solare, oraPrima).toMinutes() <= 30 } ?: return null
+        val delta = last.valore!! - prima.valore!!
+        return when { delta >= stabile -> 1; delta <= -stabile -> -1; else -> 0 }
+    }
+
     /** Sensori in rapida salita, con l'aumento dell'ultima ora. */
     fun rapide(serie: List<Serie>): Map<String, Salita> {
         val out = mutableMapOf<String, Salita>()

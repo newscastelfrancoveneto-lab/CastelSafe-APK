@@ -37,6 +37,8 @@ data class AllertaGiorno(
     val temp: String? = null,
     val vent: String? = null,
     val calo: String? = null,
+    val neve: String? = null,
+    val gelo: String? = null,
 ) {
     /** Rischi nell'ordine della PWA: nome esteso e livello. */
     val rischi: List<Pair<String, Level>>
@@ -46,6 +48,8 @@ data class AllertaGiorno(
             "Temporali" to Level.parse(temp),
             "Vento" to Level.parse(vent),
             "Ondate di calore" to Level.parse(calo),
+            "Neve" to Level.parse(neve),
+            "Ghiaccio al suolo" to Level.parse(gelo),
         )
 
     val maxLevel: Level get() = rischi.maxOf { it.second }
