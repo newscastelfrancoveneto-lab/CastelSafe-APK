@@ -189,6 +189,11 @@ fun SettingsScreen(nav: Nav) {
 
             Group("Assistenza") {
                 Item(
+                    rememberVectorPainter(Icons.Filled.Info), SetColors.general, "Introduzione all'app",
+                    "Rivedi cosa può fare CastelSafe", trailing = { Chevron() }, onClick = { nav.go("benvenuto") },
+                )
+                Divider()
+                Item(
                     painterResource(R.drawable.ic_set_bug), SetColors.general, "Verifica connessione",
                     "Controlla server CastelSafe, ARPAV, mappa, radar e notifiche",
                     trailing = { Chevron() }, onClick = { nav.go("diagnostica") },

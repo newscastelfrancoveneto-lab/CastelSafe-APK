@@ -504,7 +504,7 @@ private fun PopupCard(p: Popup, modifier: Modifier, onClose: () -> Unit) {
 
 @Composable
 private fun NavigaButton(onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = Modifier.padding(top = 10.dp)) { Text("Naviga con Maps") }
+    Button(onClick = onClick, modifier = Modifier.padding(top = 10.dp)) { Text("Naviga") }
 }
 
 // ── icone dei marker, identiche alla PWA ─────────────────────────────────────

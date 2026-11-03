@@ -55,6 +55,11 @@ object AppSettings {
         get() = prefs.getBoolean("analytics", true)
         set(v) = prefs.edit().putBoolean("analytics", v).apply()
 
+    /** Introduzione vista (o saltata): non si ripropone da sola. */
+    var welcomeSeen: Boolean
+        get() = prefs.getBoolean("welcome_seen", false)
+        set(v) = prefs.edit().putBoolean("welcome_seen", v).apply()
+
     /** Controllo degli aggiornamenti su GitHub all'avvio (al massimo una volta al giorno). */
     var autoUpdateCheck: Boolean
         get() = prefs.getBoolean("auto_update_check", true)

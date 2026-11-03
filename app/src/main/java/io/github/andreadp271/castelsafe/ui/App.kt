@@ -114,6 +114,8 @@ fun App(pendingRoute: String?, onRouteHandled: () -> Unit) {
         onRouteHandled()
     }
 
+    var welcome by remember { mutableStateOf(!io.github.andreadp271.castelsafe.data.AppSettings.welcomeSeen) }
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
@@ -160,6 +162,10 @@ fun App(pendingRoute: String?, onRouteHandled: () -> Unit) {
             composable("info") { InfoScreen(nav) }
             composable("aggiornamenti") { UpdateScreen(nav) }
             composable("diagnostica") { DiagnosticsScreen(nav) }
+            composable("benvenuto") { Benvenuto { nav.back() } }
         }
+    }
+    // primo avvio: l'introduzione copre l'app finché non si chiude
+    if (welcome) Benvenuto { io.github.andreadp271.castelsafe.data.AppSettings.welcomeSeen = true; welcome = false }
     }
 }
