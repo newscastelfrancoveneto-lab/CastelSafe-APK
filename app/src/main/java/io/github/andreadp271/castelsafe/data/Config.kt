@@ -49,7 +49,7 @@ object Stations {
         Station(
             "0102", "Castelfranco Veneto", "Stazione meteorologica", 45.6949262, 11.9477799,
             "https://www.arpa.veneto.it/dati-ambientali/dati-in-diretta/meteo-idro-nivo/variabili_meteo?codseqst=300000047&focus=PREC&return=replace",
-            null, "TEMP", true,
+            null, "PRECCUM24", true,
         ),
         Station(
             "0554", "Muson dei Sassi ad Asolo", "Asolo (a monte)", 45.78576616, 11.89466078,

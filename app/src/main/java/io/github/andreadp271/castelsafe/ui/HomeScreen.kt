@@ -659,7 +659,7 @@ private fun SensoreHomeRow(st: Station, stato: StatoStazione?, serie: List<Serie
             val level = Stations.level(st.id, t, l?.valore)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (t in rapide) Text("▲", color = cs.error, fontWeight = FontWeight.Bold)
-                else serie?.firstOrNull { it.type == t }?.let(Trend::direzione)?.let { d ->
+                else serie?.let { Trend.direzione(it, t) }?.let { d ->
                     // sale = arancione, scende = verde, stabile = grigio
                     Text(
                         when (d) { 1 -> "↗"; -1 -> "↘"; else -> "→" },

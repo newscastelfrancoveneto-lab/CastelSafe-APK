@@ -18,7 +18,24 @@ object Trend {
     /** Pioggia caduta nell'ultima ora oltre la quale è "intensa" (PREC è il dato del singolo intervallo). */
     private const val PIOGGIA_ORARIA = 6.0
 
+    /** Variazione oraria dell'accumulo 24 h sotto la quale è "stabile" (mm: la risoluzione del pluviometro). */
+    private const val ACCUMULO_STABILE = 0.2
+
     data class Salita(val delta: Double, val unita: String)
+
+    /**
+     * Verso dell'ultima ora per il sensore [tipo] della stazione. L'accumulo 24 h non è una serie di ARPAV: si ricava
+     * da PREC, come differenza tra la pioggia dell'ultima ora e quella che esce dalla finestra delle 24 ore.
+     */
+    fun direzione(serie: List<Serie>, tipo: String): Int? {
+        if (tipo != "PRECCUM24") return serie.firstOrNull { it.type == tipo }?.let { direzione(it) }
+        val prec = serie.firstOrNull { it.type == "PREC" } ?: return null
+        val last = prec.ultimo?.solare ?: return null
+        if ((prec.punti.firstOrNull()?.solare ?: return null) > last.minus(Duration.ofHours(24))) return null  // storico troppo corto
+        fun pioggia(da: Duration, a: Duration) = prec.punti.filter { it.solare > last.minus(da) && it.solare <= last.minus(a) }.sumOf { it.valore ?: 0.0 }
+        val delta = pioggia(Duration.ofHours(1), Duration.ZERO) - pioggia(Duration.ofHours(25), Duration.ofHours(24))
+        return when { delta >= ACCUMULO_STABILE -> 1; delta <= -ACCUMULO_STABILE -> -1; else -> 0 }
+    }
 
     /** Verso dell'ultima ora: 1 sale, -1 scende, 0 stabile; null se il sensore non ha soglia o manca il dato di un'ora prima. */
     fun direzione(s: Serie): Int? {
