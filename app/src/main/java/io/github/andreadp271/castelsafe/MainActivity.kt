@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(R.style.Theme_CastelSafe)  // lascia il tema rosso di avvio (splash)
         super.onCreate(savedInstanceState)
         Repo.init(this)
         History.load(this)

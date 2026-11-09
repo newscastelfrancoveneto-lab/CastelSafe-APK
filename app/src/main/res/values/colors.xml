@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="window_background">#FFF4F2F3</color>
+    <!-- bordeaux di CastelSafe: sfondo dell'icona e della schermata di avvio -->
+    <color name="ic_launcher_background">#FF8D021F</color>
 </resources>

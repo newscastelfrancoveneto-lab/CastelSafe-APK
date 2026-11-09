@@ -3,4 +3,9 @@
     <style name="Theme.CastelSafe" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
     </style>
+
+    <!-- Solo per l'avvio: MainActivity passa a Theme.CastelSafe appena parte. -->
+    <style name="Theme.CastelSafe.Starting" parent="Theme.CastelSafe">
+        <item name="android:windowBackground">@drawable/splash_window</item>
+    </style>
 </resources>

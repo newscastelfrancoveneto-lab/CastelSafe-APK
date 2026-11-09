@@ -167,5 +167,10 @@ fun App(pendingRoute: String?, onRouteHandled: () -> Unit) {
     }
     // primo avvio: l'introduzione copre l'app finché non si chiude
     if (welcome) Benvenuto { io.github.andreadp271.castelsafe.data.AppSettings.welcomeSeen = true; welcome = false }
+    // all'apertura: schermata rossa con i passaggi di caricamento, poi dissolvenza sull'app
+    var avvio by remember { mutableStateOf(!AvvioStato.mostrato) }
+    androidx.compose.animation.AnimatedVisibility(avvio, exit = fadeOut(tween(350))) {
+        Avvio { AvvioStato.mostrato = true; avvio = false }
+    }
     }
 }

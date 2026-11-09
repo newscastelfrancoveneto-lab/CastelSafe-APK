@@ -20,6 +20,18 @@
 
 CastelSafe riunisce in un'unica app le informazioni di protezione civile per i cittadini di Castelfranco Veneto: il bollettino di allerta regionale, i livelli dei corsi d'acqua, le piogge, il radar e le strade chiuse. Questa è la versione nativa per Android della [web app](https://newscastelfrancoveneto-lab.github.io/CastelSafe/): più veloce, con widget sulla Home e notifiche che puoi regolare nel dettaglio.
 
+<div align="center">
+
+| Avvio | Home | Sensori | Mappa |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/00-avvio.png" width="200" alt="Schermata di caricamento"> | <img src="docs/screenshots/01-home.png" width="200" alt="Home con allerta e sensori"> | <img src="docs/screenshots/02-sensori.png" width="200" alt="Sensori ARPAV"> | <img src="docs/screenshots/03-mappa.jpg" width="200" alt="Mappa con chiusure e aree di protezione civile"> |
+
+| Meteo | Cosa fare | Impostazioni |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/04-meteo.png" width="200" alt="Previsioni meteo"> | <img src="docs/screenshots/05-guida.png" width="200" alt="Guida su cosa fare in caso di allerta"> | <img src="docs/screenshots/06-impostazioni.png" width="200" alt="Impostazioni"> |
+
+</div>
+
 ## Cosa offre
 
 ### Allerta a colpo d'occhio

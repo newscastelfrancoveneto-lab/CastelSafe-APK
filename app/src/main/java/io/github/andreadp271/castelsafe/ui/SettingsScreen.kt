@@ -319,7 +319,7 @@ fun SettingsScreen(nav: Nav) {
 private fun AppCard() {
     Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).clip(RoundedCornerShape(24.dp)).background(Brush.linearGradient(listOf(Color(0xFF8D021F), Color(0xFF0E8A8A))))) {
         Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Image(painterResource(R.mipmap.ic_launcher), null, Modifier.size(64.dp).clip(RoundedCornerShape(18.dp)))
+            Image(painterResource(R.drawable.logo_app), null, Modifier.size(64.dp).clip(RoundedCornerShape(18.dp)))
             Column(Modifier.padding(start = 16.dp)) {
                 Text("CastelSafe", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White)
                 Text("Versione ${BuildConfig.VERSION_NAME}", color = Color.White.copy(alpha = 0.9f))
