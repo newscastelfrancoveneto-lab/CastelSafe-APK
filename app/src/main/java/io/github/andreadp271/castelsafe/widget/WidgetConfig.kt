@@ -76,7 +76,7 @@ object WidgetPrefs {
     fun tipiStazione(sid: String): List<String> {
         val live = Repo.monitor.value.data?.get(sid)?.sensori?.keys.orEmpty()
         val storico = Repo.stazione(sid).value.data?.let { SensorData.schede(sid, it).map { c -> if (c.isVento) "VVENTO" else c.type } }.orEmpty()
-        return (live + storico).distinct()
+        return (live + storico).distinct().filter { it != "PRECCUM24_DRY" }  // come nella Home: una sola pioggia 24 h
     }
 }
 
@@ -93,7 +93,7 @@ class SensoriWidgetConfigActivity : ComponentActivity() {
             CastelSafeTheme {
                 Surface(Modifier.statusBarsPadding(), color = MaterialTheme.colorScheme.background) {
                     val scope = rememberCoroutineScope()
-                    val scelte = remember { mutableStateListOf<String>().also { l -> l.addAll(WidgetPrefs.righe(this, id).map { it.key }) } }
+                    val scelte = remember { mutableStateListOf<String>().also { l -> l.addAll(WidgetPrefs.righe(this, id).map { it.key }.filter { !it.endsWith("|PRECCUM24_DRY") }) } }
                     LaunchedEffect(Unit) {
                         runCatching { Repo.loadMonitor() }
                         Stations.all.forEach { st -> launch { runCatching { Repo.loadStazione(st.id) } } }
